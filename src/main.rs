@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GCodeOperation {
     Nop,
     Move {
@@ -50,8 +50,6 @@ mod parser {
     use std::borrow::Cow;
 
     pub fn parse_gcode(cmd: &str) -> GCodeCommand {
-        // let comment = None;
-
         parse(cmd.trim()).expect("parse failed").1
     }
 
@@ -112,13 +110,39 @@ mod parser {
     }
 
     fn map_traditional(letter: char, code: u16, params: Vec<(char, &str)>) -> GCodeOperation {
-        GCodeOperation::Traditional {
-            letter,
-            code,
-            params: params
-                .into_iter()
-                .map(|(c, s)| (c, String::from(s)))
-                .collect(),
+        match (letter, code) {
+            ('G', 0 | 1) => {
+                let mut x = None;
+                let mut y = None;
+                let mut z = None;
+                let mut e = None;
+                let mut f = None;
+
+                for (c, v) in params.into_iter() {
+                    let v = match lexical_core::parse::<f64>(v.as_bytes()) {
+                        Ok(v) => v,
+                        _ => continue,
+                    };
+                    match std::ascii::AsciiExt::to_ascii_lowercase(&c) {
+                        'x' => x = Some(v),
+                        'y' => y = Some(v),
+                        'z' => z = Some(v),
+                        'e' => e = Some(v),
+                        'f' => f = Some(v),
+                        _ => {}
+                    }
+                }
+
+                GCodeOperation::Move { x, y, z, e, f }
+            }
+            _ => GCodeOperation::Traditional {
+                letter,
+                code,
+                params: params
+                    .into_iter()
+                    .map(|(c, s)| (c, String::from(s)))
+                    .collect(),
+            },
         }
     }
 
@@ -203,9 +227,9 @@ fn main() {
 
     let mut i = 0;
     for cmd in rdr {
-        let _cmd = cmd.expect("gcode read");
+        let cmd = cmd.expect("gcode read");
         i += 1;
-        // println!("GCODE: {:?}", cmd);
+        // println!("{:?}", cmd);
     }
     println!("TOTAL {}", i);
 }
