@@ -66,7 +66,9 @@ impl PlanningMove {
 
     fn new_kinematic_move(start: Vec4, end: Vec4, toolhead_state: &ToolheadState) -> PlanningMove {
         let distance = start.xyz().distance(end.xyz()); // Can't be zero
-        let velocity = toolhead_state.velocity.min(toolhead_state.max_velocity);
+        let velocity = toolhead_state
+            .velocity
+            .min(toolhead_state.limits.max_velocity);
 
         PlanningMove {
             start,
@@ -74,12 +76,12 @@ impl PlanningMove {
             distance,
             rate: (end - start) / distance,
             requested_velocity: velocity,
-            acceleration: toolhead_state.acceleration,
+            acceleration: toolhead_state.limits.max_acceleration,
             max_start_v2: 0.0,
             max_cruise_v2: velocity * velocity,
-            max_dv2: 2.0 * distance * toolhead_state.acceleration,
+            max_dv2: 2.0 * distance * toolhead_state.limits.max_acceleration,
             max_smoothed_v2: 0.0,
-            smoothed_dv2: 2.0 * distance * toolhead_state.accel_to_decel,
+            smoothed_dv2: 2.0 * distance * toolhead_state.limits.max_accel_to_decel,
             kind: None,
 
             start_v: 0.0,
@@ -100,7 +102,7 @@ impl PlanningMove {
         }
         junction_cos_theta = junction_cos_theta.max(-0.999999);
         let sin_theta_d2 = (0.5 * (1.0 - junction_cos_theta)).sqrt();
-        let r = toolhead_state.junction_deviation * sin_theta_d2 / (1.0 - sin_theta_d2);
+        let r = toolhead_state.limits.junction_deviation * sin_theta_d2 / (1.0 - sin_theta_d2);
         let tan_theta_d2 = sin_theta_d2 / (0.5 * (1.0 + junction_cos_theta)).sqrt();
         let move_centripetal_v2 = 0.5 * self.distance * tan_theta_d2 * self.acceleration;
         let prev_move_centripetal_v2 =
@@ -133,6 +135,10 @@ impl PlanningMove {
 
     fn is_extrude_move(&self) -> bool {
         self.start.w != self.end.w
+    }
+
+    fn is_extrude_only_move(&self) -> bool {
+        !self.is_kinematic_move() && self.is_extrude_move()
     }
 
     fn limit_speed(&mut self, velocity: f64, acceleration: f64) {
@@ -252,25 +258,70 @@ impl Default for PositionMode {
     }
 }
 
+trait MoveChecker: std::fmt::Debug {
+    fn check(&self, move_cmd: &mut PlanningMove);
+}
+
+#[derive(Debug)]
+struct PrintLimits {
+    max_velocity: f64,
+    max_acceleration: f64,
+    max_accel_to_decel: f64,
+    square_corner_velocity: f64,
+    junction_deviation: f64,
+    instant_corner_velocity: f64,
+}
+
+impl PrintLimits {
+    fn new() -> PrintLimits {
+        PrintLimits {
+            max_velocity: 100.0,
+            max_acceleration: 100.0,
+            max_accel_to_decel: 50.0,
+            square_corner_velocity: 5.0,
+            junction_deviation: Self::scv_to_jd(5.0, 100000.0),
+            instant_corner_velocity: 1.0,
+        }
+    }
+
+    pub fn set_max_velocity(&mut self, v: f64) {
+        self.max_velocity = v;
+    }
+
+    pub fn set_max_acceleration(&mut self, v: f64) {
+        self.max_acceleration = v;
+        self.junction_deviation =
+            Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+    }
+
+    pub fn set_max_accel_to_decel(&mut self, v: f64) {
+        self.max_accel_to_decel = v;
+    }
+
+    fn set_square_corner_velocity(&mut self, scv: f64) {
+        self.square_corner_velocity = scv;
+        self.junction_deviation =
+            Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+    }
+
+    fn scv_to_jd(scv: f64, acceleration: f64) -> f64 {
+        let scv2 = scv * scv;
+        scv2 * (2.0f64.sqrt() - 1.0) / acceleration
+    }
+}
+
 #[derive(Debug)]
 struct ToolheadState {
     position: Vec4,
     position_modes: [PositionMode; 4],
+    limits: PrintLimits,
+    move_checkers: Vec<Box<dyn MoveChecker>>,
 
     velocity: f64,
-    max_velocity: f64,
-    acceleration: f64,
-    accel_to_decel: f64,
-    square_corner_velocity: f64,
-    junction_deviation: f64,
-    instant_corner_velocity: f64,
-
-    max_e_velocity: f64,
-    max_e_accel: f64,
 }
 
-impl Default for ToolheadState {
-    fn default() -> Self {
+impl ToolheadState {
+    fn new(limits: PrintLimits) -> Self {
         ToolheadState {
             position: Default::default(),
             position_modes: [
@@ -279,23 +330,12 @@ impl Default for ToolheadState {
                 PositionMode::Absolute,
                 PositionMode::Relative,
             ],
-
-            velocity: 600.0,
-            max_velocity: 600.0,
-            acceleration: 20000.0,
-
-            accel_to_decel: 20000.0,
-            square_corner_velocity: 5.0,
-            junction_deviation: Self::scv_to_jd(5.0, 20000.0),
-            instant_corner_velocity: 1.0,
-
-            max_e_velocity: 75.0,
-            max_e_accel: 1500.0,
+            velocity: limits.max_velocity,
+            limits,
+            move_checkers: vec![],
         }
     }
-}
 
-impl ToolheadState {
     pub fn perform_move(&mut self, axes: [Option<f64>; 4]) -> PlanningMove {
         let mut new_pos = self.position;
 
@@ -308,12 +348,8 @@ impl ToolheadState {
 
         let mut pm = PlanningMove::new(self.position, new_pos, self);
 
-        if pm.is_kinematic_move() {
-            self.kinematic_check_move(&mut pm);
-        }
-
-        if pm.is_extrude_move() {
-            self.extruder_check_move(&mut pm);
+        for c in self.move_checkers.iter() {
+            c.check(&mut pm);
         }
 
         self.position = new_pos;
@@ -327,37 +363,14 @@ impl ToolheadState {
         }
     }
 
-    fn scv_to_jd(scv: f64, acceleration: f64) -> f64 {
-        let scv2 = scv * scv;
-        scv2 * (2.0f64.sqrt() - 1.0) / acceleration
-    }
-
     pub fn set_speed(&mut self, v: f64) {
         self.velocity = v
-    }
-
-    pub fn set_max_velocity(&mut self, v: f64) {
-        self.max_velocity = v;
-    }
-
-    pub fn set_acceleration(&mut self, v: f64) {
-        self.acceleration = v;
-        self.junction_deviation = Self::scv_to_jd(self.square_corner_velocity, v);
-    }
-
-    pub fn set_accel_to_decel(&mut self, v: f64) {
-        self.accel_to_decel = v;
-    }
-
-    pub fn set_scv(&mut self, v: f64) {
-        self.square_corner_velocity = v;
-        self.junction_deviation = Self::scv_to_jd(v, self.acceleration);
     }
 
     fn extruder_junction_speed_v2(&self, cur_move: &PlanningMove, prev_move: &PlanningMove) -> f64 {
         let diff_r = (cur_move.rate.w - prev_move.rate.w).abs();
         if diff_r > 0.0 {
-            let v = self.instant_corner_velocity / diff_r;
+            let v = self.limits.instant_corner_velocity / diff_r;
             v * v
         } else {
             cur_move.max_cruise_v2
@@ -365,14 +378,38 @@ impl ToolheadState {
     }
 
     fn kinematic_check_move(&self, cur_move: &mut PlanningMove) {}
+}
 
-    fn extruder_check_move(&self, cur_move: &mut PlanningMove) {
-        let e_rate = cur_move.rate.w;
-        if cur_move.rate.xy() == glam::DVec2::ZERO || e_rate < 0.0 {
+#[derive(Debug)]
+struct KinematicCartesian {
+    max_z_velocity: f64,
+    max_z_accel: f64,
+}
+
+impl MoveChecker for KinematicCartesian {
+    fn check(&self, move_cmd: &mut PlanningMove) {
+        let z_ratio = move_cmd.distance / (move_cmd.end.z - move_cmd.start.z).abs();
+        move_cmd.limit_speed(self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio);
+    }
+}
+
+#[derive(Debug)]
+struct KinematicExtruder {
+    max_velocity: f64,
+    max_accel: f64,
+}
+
+impl MoveChecker for KinematicExtruder {
+    fn check(&self, move_cmd: &mut PlanningMove) {
+        if !move_cmd.is_extrude_only_move() {
+            return;
+        }
+        let e_rate = move_cmd.rate.w;
+        if move_cmd.rate.xy() == glam::DVec2::ZERO || e_rate < 0.0 {
             let inv_extrude_r = 1.0 / e_rate.abs();
-            cur_move.limit_speed(
-                self.max_e_velocity * inv_extrude_r,
-                self.max_e_accel * inv_extrude_r,
+            move_cmd.limit_speed(
+                self.max_velocity * inv_extrude_r,
+                self.max_accel * inv_extrude_r,
             );
         }
     }
@@ -390,7 +427,29 @@ fn main() {
     let mut move_sequences: Vec<MoveSequence> = Vec::new();
 
     let mut move_kinds: HashMap<String, u16> = HashMap::new();
-    let mut toolhead_state = ToolheadState::default();
+    let mut limits = PrintLimits::new();
+    let mut toolhead_state = ToolheadState::new(limits);
+    let limits = &mut toolhead_state.limits;
+
+    limits.set_max_velocity(625.0);
+    limits.set_max_acceleration(100000.0);
+    limits.set_max_accel_to_decel(20000.0);
+    limits.set_square_corner_velocity(75.0);
+
+    toolhead_state
+        .move_checkers
+        .push(Box::new(KinematicCartesian {
+            max_z_velocity: 10.0,
+            max_z_accel: 1500.0,
+        }));
+
+    toolhead_state
+        .move_checkers
+        .push(Box::new(KinematicExtruder {
+            max_velocity: 125.0,
+            max_accel: 5000.0,
+        }));
+
     let mut cur_sequence = MoveSequence::default();
     for cmd in rdr {
         let cmd = cmd.expect("gcode read");
@@ -420,16 +479,16 @@ fn main() {
             match cmd.as_str() {
                 "set_velocity_limit" => {
                     if let Some(v) = params.get_number::<f64>("velocity") {
-                        toolhead_state.set_max_velocity(v);
+                        toolhead_state.limits.set_max_velocity(v);
                     }
                     if let Some(v) = params.get_number::<f64>("accel") {
-                        toolhead_state.set_acceleration(v);
+                        toolhead_state.limits.set_max_acceleration(v);
                     }
                     if let Some(v) = params.get_number::<f64>("accel_to_decel") {
-                        toolhead_state.set_accel_to_decel(v);
+                        toolhead_state.limits.set_max_accel_to_decel(v);
                     }
                     if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
-                        toolhead_state.set_scv(v);
+                        toolhead_state.limits.set_square_corner_velocity(v);
                     }
                 }
                 _ => {}
@@ -474,7 +533,7 @@ fn main() {
                 kind.push('K');
             }
             println!(
-                "   {:width$}[{}] @ {:.19} => {:.19}:",
+                "   {:width$}[{}] @ {:.8} => {:.8}:",
                 i,
                 kind,
                 ctime,
@@ -499,7 +558,7 @@ fn main() {
                 m.start_v, m.cruise_v, m.end_v
             );
             println!(
-                "    Time:       {:.19}+{:.19}+{:.19}  = {:.19}",
+                "    Time:       {:4}+{:4}+{:4}  = {:4}",
                 m.accel_time(),
                 m.cruise_time(),
                 m.decel_time(),
@@ -532,10 +591,10 @@ fn main() {
             // );
         }
 
-        // println!("  Layer times:");
-        // for (z, t) in layer_times.iter() {
-        //     println!("   {:7} => {}", (*z as f64) / 1000.0, format_time(*t));
-        // }
+        println!("  Layer times:");
+        for (z, t) in layer_times.iter() {
+            println!("   {:7} => {}", (*z as f64) / 1000.0, format_time(*t));
+        }
     }
 }
 
