@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 nom = "6"
 lexical-core = "0.7"
+glam = "0.17"
