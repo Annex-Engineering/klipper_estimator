@@ -20,7 +20,6 @@ pub enum GCodeOperation {
         cmd: String,
         params: GCodeExtendedParams,
     },
-    Raw(String),
 }
 
 #[derive(Debug, Clone)]
@@ -47,8 +46,7 @@ impl GCodeExtendedParams {
     }
 
     pub fn get_number<T: lexical_core::FromLexical>(&self, key: &str) -> Option<T> {
-        self.0
-            .get(key)
+        self.get_string(key)
             .map(|v| lexical_core::parse(v.as_bytes()).ok())
             .flatten()
     }
@@ -87,6 +85,8 @@ impl<R: BufRead> Iterator for GCodeReader<R> {
 }
 
 mod parser {
+    #![allow(clippy::many_single_char_names)]
+
     use super::*;
     use nom::{
         branch::alt,
@@ -142,7 +142,8 @@ mod parser {
         Ok((s, v))
     }
 
-    fn traditional_gcode(s: &str) -> IResult<&str, (char, u16, Vec<(char, &str)>, Option<&str>)> {
+    type RawTraditionalGcode<'a> = (char, u16, Vec<(char, &'a str)>, Option<&'a str>);
+    fn traditional_gcode(s: &str) -> IResult<&str, RawTraditionalGcode> {
         let (s, letter) = satisfy(|c| c.is_alphabetic())(s)?;
         let (s, code) = match lexical_core::parse_partial::<u16>(s.as_bytes()) {
             Ok((value, processed)) => (s.slice(processed..), value),
@@ -174,12 +175,12 @@ mod parser {
                         Ok(v) => v,
                         _ => continue,
                     };
-                    match std::ascii::AsciiExt::to_ascii_lowercase(&c) {
-                        'x' => x = Some(v),
-                        'y' => y = Some(v),
-                        'z' => z = Some(v),
-                        'e' => e = Some(v),
-                        'f' => f = Some(v),
+                    match c {
+                        'X' => x = Some(v),
+                        'Y' => y = Some(v),
+                        'Z' => z = Some(v),
+                        'E' => e = Some(v),
+                        'F' => f = Some(v),
                         _ => {}
                     }
                 }
@@ -240,10 +241,10 @@ mod parser {
         match take_till(|c: char| c.is_whitespace() || c == '"' || c == ';')(s)? {
             (s, v)
                 if s.chars()
-                    .nth(0)
+                    .next()
                     .map_or(true, |c| c.is_whitespace() || c == ';') =>
             {
-                return Ok((s, Cow::from(v)))
+                Ok((s, Cow::from(v)))
             }
             _ => todo!(),
         }

@@ -1,6 +1,7 @@
 mod gcode;
 
 use std::collections::{BTreeMap, HashMap};
+use std::f64::EPSILON;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -134,7 +135,7 @@ impl PlanningMove {
     }
 
     fn is_extrude_move(&self) -> bool {
-        self.start.w != self.end.w
+        (self.end.w - self.start.w).abs() >= EPSILON
     }
 
     fn is_extrude_only_move(&self) -> bool {
@@ -229,7 +230,7 @@ impl MoveSequence {
 
                     if !delayed.is_empty() {
                         let mut mc_v2 = peak_cruise_v2;
-                        for (mut m, ms_v2, me_v2) in delayed.into_iter().rev() {
+                        for (m, ms_v2, me_v2) in delayed.into_iter().rev() {
                             mc_v2 = mc_v2.min(ms_v2);
                             m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
                         }
@@ -384,8 +385,6 @@ impl ToolheadState {
             cur_move.max_cruise_v2
         }
     }
-
-    fn kinematic_check_move(&self, cur_move: &mut PlanningMove) {}
 }
 
 #[derive(Debug)]
@@ -423,7 +422,7 @@ impl MoveChecker for KinematicExtruder {
     }
 }
 
-fn is_dwell(cmd: &GCodeCommand) -> bool {
+fn is_dwell(_cmd: &GCodeCommand) -> bool {
     false
 }
 
@@ -491,18 +490,18 @@ fn main() {
         {
             match (letter, code) {
                 ('G', 92) => {
-                    params
-                        .get_number::<f64>('X')
-                        .map(|v| toolhead_state.position.x = v);
-                    params
-                        .get_number::<f64>('Y')
-                        .map(|v| toolhead_state.position.y = v);
-                    params
-                        .get_number::<f64>('Z')
-                        .map(|v| toolhead_state.position.z = v);
-                    params
-                        .get_number::<f64>('E')
-                        .map(|v| toolhead_state.position.w = v);
+                    if let Some(v) = params.get_number::<f64>('X') {
+                        toolhead_state.position.x = v;
+                    }
+                    if let Some(v) = params.get_number::<f64>('Y') {
+                        toolhead_state.position.y = v;
+                    }
+                    if let Some(v) = params.get_number::<f64>('Z') {
+                        toolhead_state.position.z = v;
+                    }
+                    if let Some(v) = params.get_number::<f64>('E') {
+                        toolhead_state.position.w = v;
+                    }
                 }
                 ('M', 82) => toolhead_state.position_modes[3] = PositionMode::Absolute,
                 ('M', 83) => toolhead_state.position_modes[3] = PositionMode::Relative,
@@ -521,22 +520,19 @@ fn main() {
                 _ => {}
             }
         } else if let GCodeOperation::Extended { cmd, params } = &cmd.op {
-            match cmd.as_str() {
-                "set_velocity_limit" => {
-                    if let Some(v) = params.get_number::<f64>("velocity") {
-                        toolhead_state.limits.set_max_velocity(v);
-                    }
-                    if let Some(v) = params.get_number::<f64>("accel") {
-                        toolhead_state.limits.set_max_acceleration(v);
-                    }
-                    if let Some(v) = params.get_number::<f64>("accel_to_decel") {
-                        toolhead_state.limits.set_max_accel_to_decel(v);
-                    }
-                    if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
-                        toolhead_state.limits.set_square_corner_velocity(v);
-                    }
+            if cmd.as_str() == "set_velocity_limit" {
+                if let Some(v) = params.get_number::<f64>("velocity") {
+                    toolhead_state.limits.set_max_velocity(v);
                 }
-                _ => {}
+                if let Some(v) = params.get_number::<f64>("accel") {
+                    toolhead_state.limits.set_max_acceleration(v);
+                }
+                if let Some(v) = params.get_number::<f64>("accel_to_decel") {
+                    toolhead_state.limits.set_max_accel_to_decel(v);
+                }
+                if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
+                    toolhead_state.limits.set_square_corner_velocity(v);
+                }
             }
         }
     }
@@ -611,7 +607,7 @@ fn main() {
                 m.total_time(),
             );
             // println!("    CT {}", ctime.to_bits());
-            ctime = ctime + m.total_time();
+            ctime += m.total_time();
 
             println!(
                 "    Distances:  {:.3}+{:.3}+{:.3} = {:.3}",
@@ -621,9 +617,9 @@ fn main() {
                 m.distance
             );
 
-            println!("");
+            println!();
 
-            if m.start.z == m.end.z {
+            if (m.start.z - m.end.z).abs() < EPSILON {
                 *layer_times
                     .entry((m.start.z * 1000.0) as usize)
                     .or_insert(0.0) += m.total_time();
@@ -647,23 +643,23 @@ fn main() {
 fn format_time(mut seconds: f64) -> String {
     let mut parts = Vec::new();
 
-    if (seconds > 86400.0) {
+    if seconds > 86400.0 {
         parts.push(format!("{}d", (seconds / 86400.0).floor()));
-        seconds = seconds % 86400.0;
+        seconds %= 86400.0;
     }
-    if (seconds > 3600.0) {
+    if seconds > 3600.0 {
         parts.push(format!("{}h", (seconds / 3600.0).floor()));
-        seconds = seconds % 3600.0;
+        seconds %= 3600.0;
     }
-    if (seconds > 60.0) {
+    if seconds > 60.0 {
         parts.push(format!("{}m", (seconds / 60.0).floor()));
-        seconds = seconds % 60.0;
+        seconds %= 60.0;
     }
-    if (seconds > 0.0) {
+    if seconds > 0.0 {
         parts.push(format!("{:.3}s", seconds));
     }
 
-    if parts.len() == 0 {
+    if parts.is_empty() {
         return "0s".into();
     }
 
