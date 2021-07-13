@@ -44,13 +44,13 @@ fn main() {
         .limits
         .set_square_corner_velocity(5.0);
 
-    // planner
-    //     .toolhead_state
-    //     .move_checkers
-    //     .push(Box::new(planner::KinematicCartesian {
-    //         max_z_velocity: 20.0,
-    //         max_z_accel: 50.0,
-    //     }));
+    planner
+        .toolhead_state
+        .move_checkers
+        .push(Box::new(planner::KinematicCartesian {
+            max_z_velocity: 20.0,
+            max_z_accel: 50.0,
+        }));
 
     planner
         .toolhead_state

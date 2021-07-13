@@ -14,8 +14,10 @@ pub struct Planner {
 }
 
 impl Planner {
+    /// Processes a gcode command through the planning engine and appends it to the currently
+    /// open move sequence.
     pub fn process_cmd(&mut self, cmd: GCodeCommand) {
-        if is_dwell(&cmd) && !self.move_sequences.is_empty() {
+        if Self::is_dwell(&cmd) && !self.move_sequences.is_empty() {
             self.move_sequences
                 .push(std::mem::take(&mut self.cur_sequence));
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
@@ -88,6 +90,7 @@ impl Planner {
         }
     }
 
+    /// Performs final processing on all sequences after reading in the full gcode command sequence
     pub fn finalize(&mut self) {
         if !self.cur_sequence.is_empty() {
             self.move_sequences
@@ -97,6 +100,10 @@ impl Planner {
         for c in self.move_sequences.iter_mut() {
             c.process();
         }
+    }
+
+    fn is_dwell(_cmd: &GCodeCommand) -> bool {
+        false
     }
 }
 
@@ -515,8 +522,4 @@ impl MoveChecker for KinematicExtruder {
             );
         }
     }
-}
-
-fn is_dwell(_cmd: &GCodeCommand) -> bool {
-    false
 }
