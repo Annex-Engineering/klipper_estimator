@@ -14,13 +14,28 @@ pub enum GCodeOperation {
     Traditional {
         letter: char,
         code: u16,
-        params: Vec<(char, String)>,
+        params: GCodeTraditionalParams,
     },
     Extended {
         cmd: String,
         params: GCodeExtendedParams,
     },
     Raw(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct GCodeTraditionalParams(Vec<(char, String)>);
+
+impl GCodeTraditionalParams {
+    pub fn get_string(&self, key: char) -> Option<&str> {
+        self.0.iter().find(|(c, _)| *c == key).map(|v| v.1.as_str())
+    }
+
+    pub fn get_number<T: lexical_core::FromLexical>(&self, key: char) -> Option<T> {
+        self.get_string(key)
+            .map(|v| lexical_core::parse(v.as_bytes()).ok())
+            .flatten()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -136,13 +151,13 @@ mod parser {
         let (s, _) = skip_space(s)?;
         let (s, params) = separated_list0(space1, traditional_param)(s)?;
         let (s, comment) = opt(comment)(s)?;
-        Ok((s, (letter, code, params, comment)))
+        Ok((s, (letter.to_ascii_uppercase(), code, params, comment)))
     }
 
     fn traditional_param(s: &str) -> IResult<&str, (char, &str)> {
         let (s, letter) = satisfy(|c| c.is_alphabetic() && c != ';')(s)?;
         let (s, value) = take_till(|c: char| c.is_whitespace() || c == ';')(s)?;
-        Ok((s, (letter, value)))
+        Ok((s, (letter.to_ascii_uppercase(), value)))
     }
 
     fn map_traditional(letter: char, code: u16, params: Vec<(char, &str)>) -> GCodeOperation {
@@ -174,10 +189,12 @@ mod parser {
             _ => GCodeOperation::Traditional {
                 letter,
                 code,
-                params: params
-                    .into_iter()
-                    .map(|(c, s)| (c, String::from(s)))
-                    .collect(),
+                params: GCodeTraditionalParams(
+                    params
+                        .into_iter()
+                        .map(|(c, s)| (c, String::from(s)))
+                        .collect(),
+                ),
             },
         }
     }

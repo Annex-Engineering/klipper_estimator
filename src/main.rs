@@ -427,27 +427,27 @@ fn main() {
     let mut move_sequences: Vec<MoveSequence> = Vec::new();
 
     let mut move_kinds: HashMap<String, u16> = HashMap::new();
-    let mut limits = PrintLimits::new();
+    let limits = PrintLimits::new();
     let mut toolhead_state = ToolheadState::new(limits);
     let limits = &mut toolhead_state.limits;
 
-    limits.set_max_velocity(625.0);
-    limits.set_max_acceleration(100000.0);
-    limits.set_max_accel_to_decel(20000.0);
-    limits.set_square_corner_velocity(75.0);
+    limits.set_max_velocity(800.0);
+    limits.set_max_acceleration(7000.0);
+    limits.set_max_accel_to_decel(7000.0);
+    limits.set_square_corner_velocity(5.0);
 
-    toolhead_state
-        .move_checkers
-        .push(Box::new(KinematicCartesian {
-            max_z_velocity: 10.0,
-            max_z_accel: 1500.0,
-        }));
+    // toolhead_state
+    //     .move_checkers
+    //     .push(Box::new(KinematicCartesian {
+    //         max_z_velocity: 20.0,
+    //         max_z_accel: 50.0,
+    //     }));
 
     toolhead_state
         .move_checkers
         .push(Box::new(KinematicExtruder {
-            max_velocity: 125.0,
-            max_accel: 5000.0,
+            max_velocity: 30.0,
+            max_accel: 3000.0,
         }));
 
     let mut cur_sequence = MoveSequence::default();
@@ -474,6 +474,43 @@ fn main() {
                 let mut m = toolhead_state.perform_move([*x, *y, *z, *e]);
                 m.kind = move_kind;
                 cur_sequence.add_move(m, &toolhead_state);
+            }
+        } else if let GCodeOperation::Traditional {
+            letter,
+            code,
+            params,
+        } = &cmd.op
+        {
+            match (letter, code) {
+                ('G', 92) => {
+                    params
+                        .get_number::<f64>('X')
+                        .map(|v| toolhead_state.position.x = v);
+                    params
+                        .get_number::<f64>('Y')
+                        .map(|v| toolhead_state.position.y = v);
+                    params
+                        .get_number::<f64>('Z')
+                        .map(|v| toolhead_state.position.z = v);
+                    params
+                        .get_number::<f64>('E')
+                        .map(|v| toolhead_state.position.w = v);
+                }
+                ('M', 82) => toolhead_state.position_modes[3] = PositionMode::Absolute,
+                ('M', 83) => toolhead_state.position_modes[3] = PositionMode::Relative,
+                ('M', 204) => {
+                    let s = params.get_number::<f64>('S');
+                    let p = params.get_number::<f64>('P');
+                    let t = params.get_number::<f64>('T');
+                    match (s, p, t) {
+                        (Some(s), _, _) => toolhead_state.limits.set_max_acceleration(s),
+                        (_, Some(p), Some(t)) => {
+                            toolhead_state.limits.set_max_acceleration(p.min(t))
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         } else if let GCodeOperation::Extended { cmd, params } = &cmd.op {
             match cmd.as_str() {
