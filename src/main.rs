@@ -281,8 +281,8 @@ struct PrintLimits {
     instant_corner_velocity: f64,
 }
 
-impl PrintLimits {
-    fn new() -> PrintLimits {
+impl Default for PrintLimits {
+    fn default() -> Self {
         PrintLimits {
             max_velocity: 100.0,
             max_acceleration: 100.0,
@@ -292,7 +292,9 @@ impl PrintLimits {
             instant_corner_velocity: 1.0,
         }
     }
+}
 
+impl PrintLimits {
     pub fn set_max_velocity(&mut self, v: f64) {
         self.max_velocity = v;
     }
@@ -330,7 +332,8 @@ struct ToolheadState {
 }
 
 impl ToolheadState {
-    fn new(limits: PrintLimits) -> Self {
+    fn new() -> Self {
+        let limits = PrintLimits::default();
         ToolheadState {
             position: Vec4::ZERO,
             position_modes: [
@@ -434,14 +437,13 @@ fn main() {
     let mut move_sequences: Vec<MoveSequence> = Vec::new();
 
     let mut move_kinds: HashMap<String, u16> = HashMap::new();
-    let limits = PrintLimits::new();
-    let mut toolhead_state = ToolheadState::new(limits);
-    let limits = &mut toolhead_state.limits;
 
-    limits.set_max_velocity(600.0);
-    limits.set_max_acceleration(25000.0);
-    limits.set_max_accel_to_decel(25000.0);
-    limits.set_square_corner_velocity(50.0);
+    let mut toolhead_state = ToolheadState::new();
+
+    toolhead_state.limits.set_max_velocity(600.0);
+    toolhead_state.limits.set_max_acceleration(25000.0);
+    toolhead_state.limits.set_max_accel_to_decel(25000.0);
+    toolhead_state.limits.set_square_corner_velocity(50.0);
 
     toolhead_state
         .move_checkers
