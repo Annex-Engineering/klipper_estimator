@@ -332,7 +332,7 @@ struct ToolheadState {
 impl ToolheadState {
     fn new(limits: PrintLimits) -> Self {
         ToolheadState {
-            position: Default::default(),
+            position: Vec4::ZERO,
             position_modes: [
                 PositionMode::Absolute,
                 PositionMode::Absolute,
