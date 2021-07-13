@@ -431,23 +431,23 @@ fn main() {
     let mut toolhead_state = ToolheadState::new(limits);
     let limits = &mut toolhead_state.limits;
 
-    limits.set_max_velocity(800.0);
-    limits.set_max_acceleration(7000.0);
-    limits.set_max_accel_to_decel(7000.0);
-    limits.set_square_corner_velocity(5.0);
+    limits.set_max_velocity(600.0);
+    limits.set_max_acceleration(25000.0);
+    limits.set_max_accel_to_decel(25000.0);
+    limits.set_square_corner_velocity(50.0);
 
-    // toolhead_state
-    //     .move_checkers
-    //     .push(Box::new(KinematicCartesian {
-    //         max_z_velocity: 20.0,
-    //         max_z_accel: 50.0,
-    //     }));
+    toolhead_state
+        .move_checkers
+        .push(Box::new(KinematicCartesian {
+            max_z_velocity: 35.0,
+            max_z_accel: 1000.0,
+        }));
 
     toolhead_state
         .move_checkers
         .push(Box::new(KinematicExtruder {
-            max_velocity: 30.0,
-            max_accel: 3000.0,
+            max_velocity: 75.0,
+            max_accel: 1500.0,
         }));
 
     let mut cur_sequence = MoveSequence::default();
