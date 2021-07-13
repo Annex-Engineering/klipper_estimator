@@ -141,6 +141,14 @@ impl PlanningMove {
         !self.is_kinematic_move() && self.is_extrude_move()
     }
 
+    fn line_width(&self, nozzle_radius: f64, layer_height: f64) -> Option<f64> {
+        // Only moves that are both extruding and moving have a line width
+        if !self.is_kinematic_move() || !self.is_extrude_move() {
+            return None;
+        }
+        Some(self.rate.w * nozzle_radius * nozzle_radius * std::f64::consts::PI / layer_height)
+    }
+
     fn limit_speed(&mut self, velocity: f64, acceleration: f64) {
         let v2 = velocity * velocity;
         if v2 < self.max_cruise_v2 {
@@ -201,7 +209,7 @@ impl MoveSequence {
         self.moves.is_empty()
     }
 
-    fn flush(&mut self) {
+    fn process(&mut self) {
         let mut delayed: Vec<(&mut PlanningMove, f64, f64)> = Vec::new();
 
         let mut next_end_v2 = 0.0;
@@ -539,7 +547,7 @@ fn main() {
 
     println!("Sequences:");
     for (i, c) in move_sequences.iter_mut().enumerate() {
-        c.flush();
+        c.process();
 
         println!(" Run {}:", i);
         println!("  Total moves: {}", c.moves.len());
@@ -586,6 +594,7 @@ fn main() {
                     / std::f64::consts::PI,
             );
             println!("    Axes {:?}", m.rate);
+            println!("    Line widht: {:?}", m.line_width(1.75 / 2.0, 0.25));
             println!("    Acceleration {:?}", m.acceleration);
             println!("    Max dv2: {}", m.max_dv2);
             println!("    Max start_v2: {}", m.max_start_v2);
