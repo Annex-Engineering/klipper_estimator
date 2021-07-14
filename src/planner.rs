@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::f64::EPSILON;
 
-use glam::{DVec4 as Vec4, Vec4Swizzles};
-
 use crate::{GCodeCommand, GCodeOperation};
+
+use glam::Vec4Swizzles;
+pub use glam::{DVec3 as Vec3, DVec4 as Vec4};
 
 #[derive(Debug, Default)]
 pub struct Planner {
@@ -489,26 +490,47 @@ impl ToolheadState {
     }
 }
 
-#[derive(Debug)]
-pub struct KinematicCartesian {
-    pub max_z_velocity: f64,
-    pub max_z_accel: f64,
+#[derive(Debug, Copy, Clone)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
 }
 
-impl MoveChecker for KinematicCartesian {
-    fn check(&self, move_cmd: &mut PlanningMove) {
-        let z_ratio = move_cmd.distance / (move_cmd.end.z - move_cmd.start.z).abs();
-        move_cmd.limit_speed(self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio);
+impl Into<usize> for Axis {
+    fn into(self) -> usize {
+        match self {
+            Self::X => 0,
+            Self::Y => 1,
+            Self::Z => 2,
+        }
     }
 }
 
 #[derive(Debug)]
-pub struct KinematicExtruder {
+pub struct AxisLimiter {
+    pub axis: Axis,
+    pub max_z_velocity: f64,
+    pub max_z_accel: f64,
+}
+
+impl MoveChecker for AxisLimiter {
+    fn check(&self, move_cmd: &mut PlanningMove) {
+        let a = self.axis.into();
+        let ratio = (move_cmd.end[a] - move_cmd.start[a]) / move_cmd.distance;
+        if ratio > 1.0 {
+            move_cmd.limit_speed(self.max_z_velocity / ratio, self.max_z_accel / ratio);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ExtruderLimiter {
     pub max_velocity: f64,
     pub max_accel: f64,
 }
 
-impl MoveChecker for KinematicExtruder {
+impl MoveChecker for ExtruderLimiter {
     fn check(&self, move_cmd: &mut PlanningMove) {
         if !move_cmd.is_extrude_only_move() {
             return;

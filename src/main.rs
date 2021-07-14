@@ -5,60 +5,80 @@ use std::fs::File;
 use std::io::BufReader;
 
 use gcode::{GCodeCommand, GCodeOperation, GCodeReader};
+use planner::Vec3;
 
-use structopt::StructOpt;
-#[derive(Debug, StructOpt)]
-#[structopt(
-    name = "klipper_estimater",
-    about = "Calculates various print statistics using Klipper kinematics"
-)]
-struct Opt {
-    #[structopt(name = "INPUT")]
-    file_name: String,
+use clap::{App, Arg};
 
-    #[structopt(subcommand)]
-    cmd: Command,
-}
+// use structopt::StructOpt;
+// #[derive(Debug, StructOpt)]
+// #[structopt(
+//     name = "klipper_estimater",
+//     about = "Calculates various print statistics using Klipper kinematics"
+// )]
+// struct Opt {
+//     #[structopt(name = "INPUT")]
+//     file_name: String,
 
-#[derive(Debug, StructOpt)]
-enum Command {
-    PrintTime,
-}
+//     #[structopt(long, default_value = "100.0")]
+//     max_velocity: f64,
+//     #[structopt(long, default_value = "100.0")]
+//     max_acceleration: f64,
+//     #[structopt(long)]
+//     max_accel_to_decel: Option<f64>,
+//     #[structopt(long, default_value = "5.0")]
+//     square_corner_velocity: f64,
+
+//     #[structopt(subcommand)]
+//     cmd: Command,
+// }
+
+// #[derive(Debug, StructOpt)]
+// enum Command {
+//     PrintTime,
+// }
 
 fn main() {
-    let opt = Opt::from_args();
-    println!("{:?}", opt);
+    let matches = App::new("klipper_estimater")
+        .version("0.1")
+        .author("Lasse Dalegaard <dalegaard@gmail.com>")
+        .about("Calculate print statistics using Klipper kinematics")
+        .arg(
+            Arg::new("INPUT")
+                .about("Input file to read gcode from, use - for stdin")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::new("config")
+                .about("Config file to read")
+                .short('c')
+                .long("config"),
+        )
+        .get_matches();
 
-    let src: Box<dyn std::io::Read> = match opt.file_name.as_str() {
+    let src: Box<dyn std::io::Read> = match matches.value_of("INPUT").unwrap() {
         "-" => Box::new(std::io::stdin()),
         filename => Box::new(File::open(filename).expect("opening gcode file failed")),
     };
     let rdr = GCodeReader::new(BufReader::new(src));
 
     let mut planner = planner::Planner::default();
-    planner.toolhead_state.limits.set_max_velocity(800.0);
-    planner.toolhead_state.limits.set_max_acceleration(7000.0);
-    planner.toolhead_state.limits.set_max_accel_to_decel(7000.0);
-    planner
-        .toolhead_state
-        .limits
-        .set_square_corner_velocity(5.0);
+    let ths = &mut planner.toolhead_state;
+    ths.limits.set_max_velocity(600.0);
+    ths.limits.set_max_acceleration(20000.0);
+    ths.limits.set_max_accel_to_decel(2000.0);
+    ths.limits.set_square_corner_velocity(5.0);
 
-    planner
-        .toolhead_state
-        .move_checkers
-        .push(Box::new(planner::KinematicCartesian {
-            max_z_velocity: 20.0,
-            max_z_accel: 50.0,
-        }));
+    ths.move_checkers.push(Box::new(planner::AxisLimiter {
+        axis: planner::Axis::Z,
+        max_z_velocity: 20.0,
+        max_z_accel: 50.0,
+    }));
 
-    planner
-        .toolhead_state
-        .move_checkers
-        .push(Box::new(planner::KinematicExtruder {
-            max_velocity: 30.0,
-            max_accel: 3000.0,
-        }));
+    ths.move_checkers.push(Box::new(planner::ExtruderLimiter {
+        max_velocity: 30.0,
+        max_accel: 3000.0,
+    }));
 
     for cmd in rdr {
         let cmd = cmd.expect("gcode read");
