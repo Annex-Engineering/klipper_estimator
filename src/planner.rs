@@ -116,11 +116,11 @@ pub struct PlanningMove {
     pub rate: Vec4,
     pub requested_velocity: f64,
     pub acceleration: f64,
-    max_start_v2: f64,
-    max_cruise_v2: f64,
-    max_dv2: f64,
-    max_smoothed_v2: f64,
-    smoothed_dv2: f64,
+    pub max_start_v2: f64,
+    pub max_cruise_v2: f64,
+    pub max_dv2: f64,
+    pub max_smoothed_v2: f64,
+    pub smoothed_dv2: f64,
 
     pub kind: Option<u16>,
 
@@ -241,6 +241,10 @@ impl PlanningMove {
         !self.is_kinematic_move() && self.is_extrude_move()
     }
 
+    pub fn is_zero_distance(&self) -> bool {
+        self.distance.abs() < EPSILON
+    }
+
     pub fn line_width(&self, nozzle_radius: f64, layer_height: f64) -> Option<f64> {
         // Only moves that are both extruding and moving have a line width
         if !self.is_kinematic_move() || !self.is_extrude_move() {
@@ -257,6 +261,10 @@ impl PlanningMove {
         self.acceleration = self.acceleration.min(acceleration);
         self.max_dv2 = 2.0 * self.distance * self.acceleration;
         self.smoothed_dv2 = self.smoothed_dv2.min(self.max_dv2);
+    }
+
+    pub fn delta(&self) -> Vec4 {
+        self.end - self.start
     }
 
     pub fn accel_distance(&self) -> f64 {
@@ -490,37 +498,20 @@ impl ToolheadState {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Axis {
-    X,
-    Y,
-    Z,
-}
-
-impl Into<usize> for Axis {
-    fn into(self) -> usize {
-        match self {
-            Self::X => 0,
-            Self::Y => 1,
-            Self::Z => 2,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct AxisLimiter {
-    pub axis: Axis,
-    pub max_z_velocity: f64,
-    pub max_z_accel: f64,
+    pub axis: Vec3,
+    pub max_velocity: f64,
+    pub max_accel: f64,
 }
 
 impl MoveChecker for AxisLimiter {
     fn check(&self, move_cmd: &mut PlanningMove) {
-        let a = self.axis.into();
-        let ratio = (move_cmd.end[a] - move_cmd.start[a]) / move_cmd.distance;
-        if ratio > 1.0 {
-            move_cmd.limit_speed(self.max_z_velocity / ratio, self.max_z_accel / ratio);
+        if move_cmd.is_zero_distance() {
+            return;
         }
+        let ratio = move_cmd.distance / (move_cmd.delta().xyz().dot(self.axis)).abs();
+        move_cmd.limit_speed(self.max_velocity * ratio, self.max_accel * ratio);
     }
 }
 
