@@ -245,12 +245,22 @@ impl PlanningMove {
         self.distance.abs() < EPSILON
     }
 
-    pub fn line_width(&self, nozzle_radius: f64, layer_height: f64) -> Option<f64> {
+    pub fn line_width(&self, filament_radius: f64, layer_height: f64) -> Option<f64> {
         // Only moves that are both extruding and moving have a line width
         if !self.is_kinematic_move() || !self.is_extrude_move() {
             return None;
         }
-        Some(self.rate.w * nozzle_radius * nozzle_radius * std::f64::consts::PI / layer_height)
+        Some(self.rate.w * filament_radius * filament_radius * std::f64::consts::PI / layer_height)
+    }
+
+    pub fn flow_rate(&self, filament_radius: f64) -> Option<f64> {
+        if !self.is_extrude_move() {
+            return None;
+        }
+        Some(
+            self.delta().w * filament_radius * filament_radius * std::f64::consts::PI
+                / self.total_time(),
+        )
     }
 
     pub fn limit_speed(&mut self, velocity: f64, acceleration: f64) {

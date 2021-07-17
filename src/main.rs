@@ -67,27 +67,27 @@ fn main() {
 
     let mut planner = planner::Planner::default();
     let ths = &mut planner.toolhead_state;
-    ths.limits.set_max_velocity(600.0);
-    ths.limits.set_max_acceleration(28000.0);
-    ths.limits.set_max_accel_to_decel(28000.0);
-    ths.limits.set_square_corner_velocity(50.0);
+    ths.limits.set_max_velocity(10000.0);
+    ths.limits.set_max_acceleration(60000.0);
+    ths.limits.set_max_accel_to_decel(60000.0);
+    ths.limits.set_square_corner_velocity(100.0);
 
     ths.move_checkers.push(Box::new(planner::AxisLimiter {
         axis: Vec3::X,
-        max_velocity: 300.0,
-        max_accel: 30000.0,
+        max_velocity: 600.0,
+        max_accel: 60000.0,
     }));
 
     ths.move_checkers.push(Box::new(planner::AxisLimiter {
         axis: Vec3::Y,
-        max_velocity: 300.0,
-        max_accel: 30000.0,
+        max_velocity: 600.0,
+        max_accel: 42000.0,
     }));
 
     ths.move_checkers.push(Box::new(planner::AxisLimiter {
         axis: Vec3::Z,
         max_velocity: 35.0,
-        max_accel: 1000.0,
+        max_accel: 1800.0,
     }));
 
     ths.move_checkers.push(Box::new(planner::ExtruderLimiter {
@@ -148,7 +148,8 @@ fn main() {
                     / std::f64::consts::PI,
             );
             println!("    Axes {:?}", m.rate);
-            println!("    Line widht: {:?}", m.line_width(1.75 / 2.0, 0.25));
+            println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
+            println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
             println!("    Acceleration {:?}", m.acceleration);
             println!("    Max dv2: {}", m.max_dv2);
             println!("    Max start_v2: {}", m.max_start_v2);
