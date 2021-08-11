@@ -115,7 +115,17 @@ fn main() {
             c.moves.iter().map(|m| m.end.w - m.start.w).sum::<f64>()
         );
         let min_time = 0.25 + c.moves.iter().map(|m| m.total_time()).sum::<f64>();
+        let phase_times = [
+            c.moves.iter().map(|m| m.accel_time()).sum::<f64>(),
+            c.moves.iter().map(|m| m.cruise_time()).sum::<f64>(),
+            c.moves.iter().map(|m| m.decel_time()).sum::<f64>(),
+        ];
+
         println!("  Minimal time: {} ({})", format_time(min_time), min_time);
+        println!("  Phases:");
+        println!("    Acceleration: {}", format_time(phase_times[0]));
+        println!("    Cruise:       {}", format_time(phase_times[1]));
+        println!("    Deceleration: {}", format_time(phase_times[2]));
 
         println!("  Moves:");
         let width = (c.moves.len() as f64).log10().ceil() as usize;
