@@ -388,29 +388,31 @@ pub trait MoveChecker: std::fmt::Debug {
 }
 
 #[derive(Debug)]
-pub struct PrintLimits {
+pub struct PrinterLimits {
     pub max_velocity: f64,
     pub max_acceleration: f64,
     pub max_accel_to_decel: f64,
     pub square_corner_velocity: f64,
     pub junction_deviation: f64,
     pub instant_corner_velocity: f64,
+    pub move_checkers: Vec<Box<dyn MoveChecker>>,
 }
 
-impl Default for PrintLimits {
+impl Default for PrinterLimits {
     fn default() -> Self {
-        PrintLimits {
+        PrinterLimits {
             max_velocity: 100.0,
             max_acceleration: 100.0,
             max_accel_to_decel: 50.0,
             square_corner_velocity: 5.0,
             junction_deviation: Self::scv_to_jd(5.0, 100000.0),
             instant_corner_velocity: 1.0,
+            move_checkers: vec![],
         }
     }
 }
 
-impl PrintLimits {
+impl PrinterLimits {
     pub fn set_max_velocity(&mut self, v: f64) {
         self.max_velocity = v;
     }
@@ -431,6 +433,10 @@ impl PrintLimits {
             Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
     }
 
+    pub fn set_instant_corner_velocity(&mut self, icv: f64) {
+        self.instant_corner_velocity = icv;
+    }
+
     fn scv_to_jd(scv: f64, acceleration: f64) -> f64 {
         let scv2 = scv * scv;
         scv2 * (2.0f64.sqrt() - 1.0) / acceleration
@@ -441,15 +447,14 @@ impl PrintLimits {
 pub struct ToolheadState {
     pub position: Vec4,
     pub position_modes: [PositionMode; 4],
-    pub limits: PrintLimits,
-    pub move_checkers: Vec<Box<dyn MoveChecker>>,
+    pub limits: PrinterLimits,
 
     pub velocity: f64,
 }
 
 impl Default for ToolheadState {
     fn default() -> Self {
-        let limits = PrintLimits::default();
+        let limits = PrinterLimits::default();
         ToolheadState {
             position: Vec4::ZERO,
             position_modes: [
@@ -460,7 +465,6 @@ impl Default for ToolheadState {
             ],
             velocity: limits.max_velocity,
             limits,
-            move_checkers: vec![],
         }
     }
 }
@@ -478,7 +482,7 @@ impl ToolheadState {
 
         let mut pm = PlanningMove::new(self.position, new_pos, self);
 
-        for c in self.move_checkers.iter() {
+        for c in self.limits.move_checkers.iter() {
             c.check(&mut pm);
         }
 

@@ -9,4 +9,6 @@ edition = "2018"
 nom = "6"
 lexical-core = "0.7"
 glam = "0.17"
-clap = "3.0.0-beta.2"
+clap = "3.0.0-beta.4"
+reqwest = { version = "0.11.4", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
