@@ -7,8 +7,11 @@ edition = "2018"
 
 [dependencies]
 nom = "6"
-lexical-core = "0.7"
-glam = "0.17"
+lexical-core = "^0.7"
+glam = { version = "0.18", features = ["serde"] }
 clap = "3.0.0-beta.4"
-reqwest = { version = "0.11.4", features = ["blocking", "json"] }
-serde = { version = "1.0", features = ["derive"] }
+reqwest = { version = "^0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "^1", features = ["derive"] }
+serde_json = "^1"
+deser-hjson = "^1"
+once_cell = "1.8.0"

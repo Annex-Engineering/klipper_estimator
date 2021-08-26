@@ -5,6 +5,7 @@ use crate::{GCodeCommand, GCodeOperation};
 
 use glam::Vec4Swizzles;
 pub use glam::{DVec3 as Vec3, DVec4 as Vec4};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default)]
 pub struct Planner {
@@ -371,31 +372,17 @@ impl MoveSequence {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum PositionMode {
-    Absolute,
-    Relative,
-}
-
-impl Default for PositionMode {
-    fn default() -> Self {
-        PositionMode::Absolute
-    }
-}
-
-pub trait MoveChecker: std::fmt::Debug {
-    fn check(&self, move_cmd: &mut PlanningMove);
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PrinterLimits {
     pub max_velocity: f64,
     pub max_acceleration: f64,
     pub max_accel_to_decel: f64,
     pub square_corner_velocity: f64,
+    #[serde(skip)]
     pub junction_deviation: f64,
     pub instant_corner_velocity: f64,
-    pub move_checkers: Vec<Box<dyn MoveChecker>>,
+    pub move_checkers: Vec<MoveChecker>,
 }
 
 impl Default for PrinterLimits {
@@ -440,6 +427,18 @@ impl PrinterLimits {
     fn scv_to_jd(scv: f64, acceleration: f64) -> f64 {
         let scv2 = scv * scv;
         scv2 * (2.0f64.sqrt() - 1.0) / acceleration
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PositionMode {
+    Absolute,
+    Relative,
+}
+
+impl Default for PositionMode {
+    fn default() -> Self {
+        PositionMode::Absolute
     }
 }
 
@@ -512,41 +511,51 @@ impl ToolheadState {
     }
 }
 
-#[derive(Debug)]
-pub struct AxisLimiter {
-    pub axis: Vec3,
-    pub max_velocity: f64,
-    pub max_accel: f64,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MoveChecker {
+    AxisLimiter {
+        axis: Vec3,
+        max_velocity: f64,
+        max_accel: f64,
+    },
+    ExtruderLimiter {
+        max_velocity: f64,
+        max_accel: f64,
+    },
 }
 
-impl MoveChecker for AxisLimiter {
-    fn check(&self, move_cmd: &mut PlanningMove) {
+impl MoveChecker {
+    pub fn check(&self, move_cmd: &mut PlanningMove) {
+        match self {
+            Self::AxisLimiter {
+                axis,
+                max_velocity,
+                max_accel,
+            } => Self::check_axis(move_cmd, *axis, *max_velocity, *max_accel),
+            Self::ExtruderLimiter {
+                max_velocity,
+                max_accel,
+            } => Self::check_extruder(move_cmd, *max_velocity, *max_accel),
+        }
+    }
+
+    fn check_axis(move_cmd: &mut PlanningMove, axis: Vec3, max_velocity: f64, max_accel: f64) {
         if move_cmd.is_zero_distance() {
             return;
         }
-        let ratio = move_cmd.distance / (move_cmd.delta().xyz().dot(self.axis)).abs();
-        move_cmd.limit_speed(self.max_velocity * ratio, self.max_accel * ratio);
+        let ratio = move_cmd.distance / (move_cmd.delta().xyz().dot(axis)).abs();
+        move_cmd.limit_speed(max_velocity * ratio, max_accel * ratio);
     }
-}
 
-#[derive(Debug)]
-pub struct ExtruderLimiter {
-    pub max_velocity: f64,
-    pub max_accel: f64,
-}
-
-impl MoveChecker for ExtruderLimiter {
-    fn check(&self, move_cmd: &mut PlanningMove) {
+    fn check_extruder(move_cmd: &mut PlanningMove, max_velocity: f64, max_accel: f64) {
         if !move_cmd.is_extrude_only_move() {
             return;
         }
         let e_rate = move_cmd.rate.w;
         if move_cmd.rate.xy() == glam::DVec2::ZERO || e_rate < 0.0 {
             let inv_extrude_r = 1.0 / e_rate.abs();
-            move_cmd.limit_speed(
-                self.max_velocity * inv_extrude_r,
-                self.max_accel * inv_extrude_r,
-            );
+            move_cmd.limit_speed(max_velocity * inv_extrude_r, max_accel * inv_extrude_r);
         }
     }
 }

@@ -12,32 +12,63 @@ use std::f64::EPSILON;
 
 use clap::{AppSettings, Clap};
 use glam::Vec4Swizzles;
+use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
 #[derive(Clap, Debug)]
-#[clap(version = "1.0", author = "Lasse Dalegaard <dalegaard@gmail.com>")]
+#[clap(version = "0.0", author = "Lasse Dalegaard <dalegaard@gmail.com>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,
 
+    #[clap(long = "config_file")]
+    config_filename: Option<String>,
+
     #[clap(subcommand)]
     cmd: SubCommand,
+
+    #[clap(skip)]
+    config: OnceCell<PrinterLimits>,
 }
 
 impl Opts {
-    fn printer_limits(&self) -> PrinterLimits {
-        // Was moonraker config requested? If so, try to grab that first.
-        let mut limits = PrinterLimits::default();
+    fn printer_limits(&self) -> &PrinterLimits {
+        match self.config.get() {
+            Some(limits) => limits,
+            None => match self.load_config() {
+                Ok(limits) => {
+                    let _ = self.config.set(limits);
+                    self.config.get().unwrap()
+                }
+                Err(e) => {
+                    eprintln!("Failed to load printer configuration: {:?}", e);
+                    std::process::exit(1);
+                }
+            },
+        }
+    }
 
+    fn load_config(&self) -> Result<PrinterLimits, Box<dyn Error>> {
+        // Load config file
+        let mut limits = if let Some(filename) = &self.config_filename {
+            let src = std::fs::read_to_string(filename)?;
+            let mut limits: PrinterLimits = deser_hjson::from_str(&src)?;
+
+            // Do any fix-ups
+            limits.set_square_corner_velocity(limits.square_corner_velocity);
+
+            limits
+        } else {
+            PrinterLimits::default()
+        };
+
+        // Was moonraker config requested? If so, try to grab that first.
         if let Some(url) = &self.config_moonraker {
-            if let Err(err) = moonraker_config(&url, &mut limits) {
-                eprintln!("Retrieving config from Moonraker failed: {}", err);
-                std::process::exit(1);
-            }
+            moonraker_config(&url, &mut limits)?;
         }
 
-        limits
+        Ok(limits)
     }
 }
 
@@ -115,20 +146,22 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
 
     for (axis, m, a) in limits {
         if let (Some(max_velocity), Some(max_accel)) = (m, a) {
-            target.move_checkers.push(Box::new(planner::AxisLimiter {
-                axis,
-                max_velocity,
-                max_accel,
-            }));
+            target
+                .move_checkers
+                .push(planner::MoveChecker::AxisLimiter {
+                    axis,
+                    max_velocity,
+                    max_accel,
+                });
         }
     }
 
     target
         .move_checkers
-        .push(Box::new(planner::ExtruderLimiter {
+        .push(planner::MoveChecker::ExtruderLimiter {
             max_velocity: cfg.extruder.max_extrude_only_velocity,
             max_accel: cfg.extruder.max_extrude_only_accel,
-        }));
+        });
     Ok(())
 }
 
@@ -136,6 +169,7 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
 enum SubCommand {
     Estimate(EstimateCmd),
     PostProcess(PostProcessCmd),
+    DumpConfig(DumpConfigCmd),
 }
 
 impl SubCommand {
@@ -143,7 +177,17 @@ impl SubCommand {
         match self {
             Self::Estimate(i) => i.run(opts),
             Self::PostProcess(i) => i.run(opts),
+            Self::DumpConfig(i) => i.run(opts),
         }
+    }
+}
+
+#[derive(Clap, Debug)]
+struct DumpConfigCmd;
+
+impl DumpConfigCmd {
+    fn run(&self, opts: &Opts) {
+        let _ = serde_json::to_writer_pretty(std::io::stdout(), &opts.printer_limits());
     }
 }
 
@@ -161,7 +205,7 @@ impl EstimateCmd {
         let rdr = GCodeReader::new(BufReader::new(src));
 
         let mut planner = planner::Planner::default();
-        planner.toolhead_state.limits = opts.printer_limits();
+        planner.toolhead_state.limits = opts.printer_limits().clone();
 
         for cmd in rdr {
             let cmd = cmd.expect("gcode read");
@@ -289,7 +333,7 @@ impl PostProcessCmd {
         let rdr = GCodeReader::new(BufReader::new(src));
 
         let mut planner = planner::Planner::default();
-        planner.toolhead_state.limits = opts.printer_limits();
+        planner.toolhead_state.limits = opts.printer_limits().clone();
 
         for cmd in rdr {
             let cmd = cmd.expect("gcode read");
