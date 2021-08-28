@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 use gcode::{GCodeCommand, GCodeOperation, GCodeReader};
-use planner::{PrinterLimits, Vec3};
+use planner::{PlanningOperation, PrinterLimits, Vec3};
 use std::f64::EPSILON;
 
 use clap::{AppSettings, Clap};
@@ -214,14 +214,16 @@ impl EstimateCmd {
 
         planner.finalize();
 
-        let move_kinds: BTreeMap<_, _> = planner.move_kinds.iter().map(|(k, v)| (v, k)).collect();
+        // let move_kinds: BTreeMap<_, _> = planner.move_kinds.iter().map(|(k, v)| (v, k)).collect();
 
         println!("Sequences:");
-        for (i, c) in planner.move_sequences.iter_mut().enumerate() {
-            let moves: Vec<_> = c.iter().collect();
+
+        let ops: Vec<_> = planner.iter().collect();
+        for (i, moves) in ops.split(|o| !o.is_move()).enumerate() {
+            let moves: Vec<_> = moves.iter().flat_map(|o| o.get_move()).collect();
 
             println!(" Run {}:", i);
-            println!("  Total moves: {}", c.total_moves());
+            println!("  Total moves: {}", moves.len());
             println!(
                 "  Total distance: {}",
                 moves.iter().map(|m| m.distance).sum::<f64>()
@@ -276,10 +278,10 @@ impl EstimateCmd {
                 println!("    Axes {:?}", m.rate);
                 println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
                 println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
-                println!(
-                    "    Kind: {:?}",
-                    m.kind.as_ref().and_then(|v| move_kinds.get(v))
-                );
+                // println!(
+                //     "    Kind: {:?}",
+                //     m.kind.as_ref().and_then(|v| move_kinds.get(v))
+                // );
                 println!("    Acceleration {:?}", m.acceleration);
                 println!("    Max dv2: {}", m.max_dv2);
                 println!("    Max start_v2: {}", m.max_start_v2);
@@ -337,17 +339,31 @@ impl PostProcessCmd {
         let mut planner = planner::Planner::default();
         planner.toolhead_state.limits = opts.printer_limits().clone();
 
-        for cmd in rdr {
+        let mut total_time = 0.25;
+
+        for (n, cmd) in rdr.enumerate() {
             let cmd = cmd.expect("gcode read");
             planner.process_cmd(cmd);
+
+            if n % 1000 == 0 {
+                for c in planner.iter() {
+                    match c {
+                        PlanningOperation::Dwell => total_time += 0.25,
+                        PlanningOperation::Move(m) => total_time += m.total_time(),
+                    }
+                }
+            }
         }
 
         planner.finalize();
 
-        let mut total_time = 0.0;
-        for (i, c) in planner.move_sequences.iter_mut().enumerate() {
-            total_time += 0.25 + c.iter().map(|m| m.total_time()).sum::<f64>();
+        for c in planner.iter() {
+            match c {
+                PlanningOperation::Dwell => total_time += 0.25,
+                PlanningOperation::Move(m) => total_time += m.total_time(),
+            }
         }
+
         println!("Total print time: {}", total_time);
     }
 }

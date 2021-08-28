@@ -7,22 +7,34 @@ use glam::Vec4Swizzles;
 pub use glam::{DVec3 as Vec3, DVec4 as Vec4};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Planner {
-    pub move_sequences: Vec<MoveSequence>,
-    pub cur_sequence: MoveSequence,
+    sequences: VecDeque<MoveSequence>,
     pub move_kinds: HashMap<String, u16>,
     pub toolhead_state: ToolheadState,
+}
+
+impl Default for Planner {
+    fn default() -> Planner {
+        Planner {
+            sequences: [MoveSequence::default()].into(),
+            move_kinds: HashMap::new(),
+            toolhead_state: ToolheadState::default(),
+        }
+    }
 }
 
 impl Planner {
     /// Processes a gcode command through the planning engine and appends it to the currently
     /// open move sequence.
     pub fn process_cmd(&mut self, cmd: GCodeCommand) {
-        if Self::is_dwell(&cmd) && !self.move_sequences.is_empty() {
-            self.cur_sequence.flush();
-            self.move_sequences
-                .push(std::mem::take(&mut self.cur_sequence));
+        if Self::is_dwell(&cmd) {
+            if let Some(seq) = self.sequences.back_mut() {
+                if !seq.is_empty() {
+                    seq.flush();
+                    self.sequences.push_back(MoveSequence::default());
+                }
+            }
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
             if let Some(v) = f {
                 self.toolhead_state.set_speed(v / 60.0);
@@ -36,7 +48,10 @@ impl Planner {
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
                 let mut m = self.toolhead_state.perform_move([*x, *y, *z, *e]);
                 m.kind = move_kind;
-                self.cur_sequence.add_move(m, &self.toolhead_state);
+                self.sequences
+                    .back_mut()
+                    .unwrap()
+                    .add_move(m, &self.toolhead_state);
             }
         } else if let GCodeOperation::Traditional {
             letter,
@@ -95,19 +110,84 @@ impl Planner {
 
     /// Performs final processing on the final sequence, if one is active.
     pub fn finalize(&mut self) {
-        if !self.cur_sequence.is_empty() {
-            self.cur_sequence.flush();
-            self.move_sequences
-                .push(std::mem::take(&mut self.cur_sequence));
+        self.sequences.back_mut().map(|seq| seq.flush());
+    }
+
+    fn is_dwell(cmd: &GCodeCommand) -> bool {
+        match &cmd.op {
+            GCodeOperation::Traditional {
+                letter: 'M',
+                code: 109,
+                ..
+            } => true,
+            GCodeOperation::Traditional {
+                letter: 'M',
+                code: 190,
+                ..
+            } => true,
+            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => true,
+            _ => false,
         }
     }
 
-    fn is_dwell(_cmd: &GCodeCommand) -> bool {
-        false
+    pub fn next_operation(&mut self) -> Option<PlanningOperation> {
+        let fseq = self.sequences.front_mut().unwrap();
+
+        match fseq.next_move() {
+            Some(m) => return Some(PlanningOperation::Move(m)),
+            None => {
+                // There's no next move, if this isn't the active sequence then remove it
+                if self.sequences.len() > 1 {
+                    self.sequences.pop_front();
+                    Some(PlanningOperation::Dwell)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn iter(&mut self) -> PlanningOperationIter {
+        PlanningOperationIter { planner: self }
     }
 }
 
 #[derive(Debug)]
+pub enum PlanningOperation {
+    Dwell,
+    Move(PlanningMove),
+}
+
+impl PlanningOperation {
+    pub fn is_move(&self) -> bool {
+        match self {
+            Self::Move(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_move(&self) -> Option<PlanningMove> {
+        match self {
+            Self::Move(m) => Some(*m),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PlanningOperationIter<'a> {
+    planner: &'a mut Planner,
+}
+
+impl<'a> Iterator for PlanningOperationIter<'a> {
+    type Item = PlanningOperation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.planner.next_operation()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct PlanningMove {
     pub start: Vec4,
     pub end: Vec4,
@@ -308,7 +388,6 @@ impl PlanningMove {
 #[derive(Debug, Default)]
 pub struct MoveSequence {
     moves: VecDeque<PlanningMove>,
-    total_moves: usize,
     flush_count: usize,
 }
 
@@ -320,12 +399,7 @@ impl MoveSequence {
         if let Some(prev_move) = self.moves.back() {
             move_cmd.apply_junction(prev_move, toolhead_state);
         }
-        self.total_moves += 1;
         self.moves.push_back(move_cmd);
-    }
-
-    pub fn total_moves(&self) -> usize {
-        self.total_moves
     }
 
     fn is_empty(&self) -> bool {
@@ -415,22 +489,6 @@ impl MoveSequence {
                 v
             }
         }
-    }
-
-    pub fn iter<'a>(&'a mut self) -> MoveSequenceIter<'a> {
-        MoveSequenceIter { seq: self }
-    }
-}
-
-pub struct MoveSequenceIter<'a> {
-    seq: &'a mut MoveSequence,
-}
-
-impl<'a> Iterator for MoveSequenceIter<'a> {
-    type Item = PlanningMove;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.seq.next_move()
     }
 }
 
