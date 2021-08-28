@@ -20,6 +20,7 @@ impl Planner {
     /// open move sequence.
     pub fn process_cmd(&mut self, cmd: GCodeCommand) {
         if Self::is_dwell(&cmd) && !self.move_sequences.is_empty() {
+            self.cur_sequence.flush();
             self.move_sequences
                 .push(std::mem::take(&mut self.cur_sequence));
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
@@ -92,15 +93,12 @@ impl Planner {
         }
     }
 
-    /// Performs final processing on all sequences after reading in the full gcode command sequence
+    /// Performs final processing on the final sequence, if one is active.
     pub fn finalize(&mut self) {
         if !self.cur_sequence.is_empty() {
+            self.cur_sequence.flush();
             self.move_sequences
                 .push(std::mem::take(&mut self.cur_sequence));
-        }
-
-        for c in self.move_sequences.iter_mut() {
-            c.flush();
         }
     }
 
@@ -309,8 +307,9 @@ impl PlanningMove {
 
 #[derive(Debug, Default)]
 pub struct MoveSequence {
-    pub moves: VecDeque<PlanningMove>,
-    pub flush_count: usize,
+    moves: VecDeque<PlanningMove>,
+    total_moves: usize,
+    flush_count: usize,
 }
 
 impl MoveSequence {
@@ -321,8 +320,12 @@ impl MoveSequence {
         if let Some(prev_move) = self.moves.back() {
             move_cmd.apply_junction(prev_move, toolhead_state);
         }
+        self.total_moves += 1;
         self.moves.push_back(move_cmd);
-        self.process(true);
+    }
+
+    pub fn total_moves(&self) -> usize {
+        self.total_moves
     }
 
     fn is_empty(&self) -> bool {
@@ -330,6 +333,11 @@ impl MoveSequence {
     }
 
     fn process(&mut self, partial: bool) {
+        if self.flush_count == self.moves.len() {
+            // If there's nothing to flush, bail quickly
+            return;
+        }
+
         let mut delayed: Vec<(&mut PlanningMove, f64, f64)> = Vec::new();
 
         let mut next_end_v2 = 0.0;
@@ -396,6 +404,7 @@ impl MoveSequence {
     }
 
     pub fn next_move(&mut self) -> Option<PlanningMove> {
+        self.process(true);
         if self.flush_count == 0 {
             return None;
         }
@@ -406,6 +415,22 @@ impl MoveSequence {
                 v
             }
         }
+    }
+
+    pub fn iter<'a>(&'a mut self) -> MoveSequenceIter<'a> {
+        MoveSequenceIter { seq: self }
+    }
+}
+
+pub struct MoveSequenceIter<'a> {
+    seq: &'a mut MoveSequence,
+}
+
+impl<'a> Iterator for MoveSequenceIter<'a> {
+    type Item = PlanningMove;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.seq.next_move()
     }
 }
 

@@ -218,21 +218,23 @@ impl EstimateCmd {
 
         println!("Sequences:");
         for (i, c) in planner.move_sequences.iter_mut().enumerate() {
+            let moves: Vec<_> = c.iter().collect();
+
             println!(" Run {}:", i);
-            println!("  Total moves: {}", c.moves.len());
+            println!("  Total moves: {}", c.total_moves());
             println!(
                 "  Total distance: {}",
-                c.moves.iter().map(|m| m.distance).sum::<f64>()
+                moves.iter().map(|m| m.distance).sum::<f64>()
             );
             println!(
                 "  Total extrude distance: {}",
-                c.moves.iter().map(|m| m.end.w - m.start.w).sum::<f64>()
+                moves.iter().map(|m| m.end.w - m.start.w).sum::<f64>()
             );
-            let min_time = 0.25 + c.moves.iter().map(|m| m.total_time()).sum::<f64>();
+            let min_time = 0.25 + moves.iter().map(|m| m.total_time()).sum::<f64>();
             let phase_times = [
-                c.moves.iter().map(|m| m.accel_time()).sum::<f64>(),
-                c.moves.iter().map(|m| m.cruise_time()).sum::<f64>(),
-                c.moves.iter().map(|m| m.decel_time()).sum::<f64>(),
+                moves.iter().map(|m| m.accel_time()).sum::<f64>(),
+                moves.iter().map(|m| m.cruise_time()).sum::<f64>(),
+                moves.iter().map(|m| m.decel_time()).sum::<f64>(),
             ];
 
             println!("  Minimal time: {} ({})", format_time(min_time), min_time);
@@ -242,18 +244,11 @@ impl EstimateCmd {
             println!("    Deceleration: {}", format_time(phase_times[2]));
 
             println!("  Moves:");
-            let width = (c.moves.len() as f64).log10().ceil() as usize;
+            let width = (moves.len() as f64).log10().ceil() as usize;
             let mut layer_times = BTreeMap::new();
             let mut ctime = 0.25;
             let mut ztime = 0.0;
-            let mut i = -1i64;
-            loop {
-                let m = match c.next_move() {
-                    None => break,
-                    Some(m) => m,
-                };
-                i += 1;
-                // for (i, m) in c.moves.iter().enumerate() {
+            for (i, m) in moves.iter().enumerate() {
                 let mut kind = String::new();
                 if m.is_extrude_move() {
                     kind.push('E');
@@ -351,7 +346,7 @@ impl PostProcessCmd {
 
         let mut total_time = 0.0;
         for (i, c) in planner.move_sequences.iter_mut().enumerate() {
-            total_time += 0.25 + c.moves.iter().map(|m| m.total_time()).sum::<f64>();
+            total_time += 0.25 + c.iter().map(|m| m.total_time()).sum::<f64>();
         }
         println!("Total print time: {}", total_time);
     }
