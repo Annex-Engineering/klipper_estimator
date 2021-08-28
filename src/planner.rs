@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::f64::EPSILON;
 
 use crate::{GCodeCommand, GCodeOperation};
@@ -100,7 +100,7 @@ impl Planner {
         }
 
         for c in self.move_sequences.iter_mut() {
-            c.process();
+            c.flush();
         }
     }
 
@@ -309,7 +309,8 @@ impl PlanningMove {
 
 #[derive(Debug, Default)]
 pub struct MoveSequence {
-    pub moves: Vec<PlanningMove>,
+    pub moves: VecDeque<PlanningMove>,
+    pub flush_count: usize,
 }
 
 impl MoveSequence {
@@ -317,30 +318,44 @@ impl MoveSequence {
         if move_cmd.distance == 0.0 {
             return;
         }
-        if let Some(prev_move) = self.moves.last() {
+        if let Some(prev_move) = self.moves.back() {
             move_cmd.apply_junction(prev_move, toolhead_state);
         }
-        self.moves.push(move_cmd);
+        self.moves.push_back(move_cmd);
+        self.process(true);
     }
 
     fn is_empty(&self) -> bool {
         self.moves.is_empty()
     }
 
-    fn process(&mut self) {
+    fn process(&mut self, partial: bool) {
         let mut delayed: Vec<(&mut PlanningMove, f64, f64)> = Vec::new();
 
         let mut next_end_v2 = 0.0;
         let mut next_smoothed_v2 = 0.0;
         let mut peak_cruise_v2 = 0.0;
 
-        for m in self.moves.iter_mut().rev() {
+        let mut update_flush_count = partial;
+
+        for (idx, m) in self
+            .moves
+            .iter_mut()
+            .enumerate()
+            .skip(self.flush_count)
+            .rev()
+        {
             let reachable_start_v2 = next_end_v2 + m.max_dv2;
             let start_v2 = m.max_start_v2.min(reachable_start_v2);
             let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
             let smoothed_v2 = m.max_smoothed_v2.min(reachable_smoothed_v2);
             if smoothed_v2 < reachable_smoothed_v2 {
                 if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty() {
+                    if update_flush_count && peak_cruise_v2 != 0.0 {
+                        self.flush_count = idx + 1;
+                        update_flush_count = false;
+                    }
+
                     peak_cruise_v2 = m
                         .max_cruise_v2
                         .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
@@ -368,6 +383,28 @@ impl MoveSequence {
             }
             next_end_v2 = start_v2;
             next_smoothed_v2 = smoothed_v2;
+        }
+
+        // We flushed to the end
+        if !partial {
+            self.flush_count = self.moves.len();
+        }
+    }
+
+    pub fn flush(&mut self) {
+        self.process(false);
+    }
+
+    pub fn next_move(&mut self) -> Option<PlanningMove> {
+        if self.flush_count == 0 {
+            return None;
+        }
+        match self.moves.pop_front() {
+            None => None,
+            v @ Some(_) => {
+                self.flush_count -= 1;
+                v
+            }
         }
     }
 }

@@ -246,7 +246,14 @@ impl EstimateCmd {
             let mut layer_times = BTreeMap::new();
             let mut ctime = 0.25;
             let mut ztime = 0.0;
-            for (i, m) in c.moves.iter().enumerate() {
+            let mut i = -1i64;
+            loop {
+                let m = match c.next_move() {
+                    None => break,
+                    Some(m) => m,
+                };
+                i += 1;
+                // for (i, m) in c.moves.iter().enumerate() {
                 let mut kind = String::new();
                 if m.is_extrude_move() {
                     kind.push('E');
