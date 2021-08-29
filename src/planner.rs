@@ -149,13 +149,13 @@ impl Planner {
     fn is_dwell(cmd: &GCodeCommand) -> bool {
         match &cmd.op {
             GCodeOperation::Traditional {
-                letter: 'M',
-                code: 109,
+                letter: 'G',
+                code: 28,
                 ..
             } => true,
             GCodeOperation::Traditional {
                 letter: 'M',
-                code: 190,
+                code: 109 | 190,
                 ..
             } => true,
             GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => true,

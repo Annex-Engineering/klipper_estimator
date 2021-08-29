@@ -287,6 +287,7 @@ impl EstimateCmd {
                     println!("    Acceleration {:?}", m.acceleration);
                     println!("    Max dv2: {}", m.max_dv2);
                     println!("    Max start_v2: {}", m.max_start_v2);
+                    println!("    Max cruise_v2: {}", m.max_cruise_v2);
                     println!("    Max smoothed_v2: {}", m.max_smoothed_v2);
                     println!(
                         "    Velocity:   {} / {} / {}",
