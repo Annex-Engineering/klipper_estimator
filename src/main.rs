@@ -219,6 +219,7 @@ impl EstimateCmd {
         println!("Sequences:");
 
         let ops: Vec<_> = planner.iter().collect();
+        let cross_section = std::f64::consts::PI * (1.75f64 / 2.0).powf(2.0);
         for (i, moves) in ops.split(|o| !o.is_move()).enumerate() {
             let moves: Vec<_> = moves.iter().flat_map(|o| o.get_move()).collect();
 
@@ -228,10 +229,8 @@ impl EstimateCmd {
                 "  Total distance: {}",
                 moves.iter().map(|m| m.distance).sum::<f64>()
             );
-            println!(
-                "  Total extrude distance: {}",
-                moves.iter().map(|m| m.end.w - m.start.w).sum::<f64>()
-            );
+            let extrude_distance = moves.iter().map(|m| m.end.w - m.start.w).sum::<f64>();
+            println!("  Total extrude distance: {}", extrude_distance);
             let min_time = 0.25 + moves.iter().map(|m| m.total_time()).sum::<f64>();
             let phase_times = [
                 moves.iter().map(|m| m.accel_time()).sum::<f64>(),
@@ -240,6 +239,10 @@ impl EstimateCmd {
             ];
 
             println!("  Minimal time: {} ({})", format_time(min_time), min_time);
+            println!(
+                "  Average flow: {} mm3/s",
+                extrude_distance * cross_section / min_time
+            );
             println!("  Phases:");
             println!("    Acceleration: {}", format_time(phase_times[0]));
             println!("    Cruise:       {}", format_time(phase_times[1]));
