@@ -196,6 +196,8 @@ struct EstimateCmd {
     input: String,
     #[clap(long = "dump_moves")]
     dump_moves: bool,
+    #[clap(long = "dump_summary")]
+    dump_summary: bool,
 }
 
 impl EstimateCmd {
@@ -218,8 +220,12 @@ impl EstimateCmd {
 
         println!("Sequences:");
 
+        let mut layer_times = BTreeMap::new();
+        let mut kind_times = BTreeMap::new();
+
         let ops: Vec<_> = planner.iter().collect();
         let cross_section = std::f64::consts::PI * (1.75f64 / 2.0).powf(2.0);
+        let mut move_idx = 0;
         for (i, moves) in ops.split(|o| !o.is_move()).enumerate() {
             let moves: Vec<_> = moves.iter().flat_map(|o| o.get_move()).collect();
 
@@ -250,11 +256,17 @@ impl EstimateCmd {
 
             println!("  Moves:");
             let width = (moves.len() as f64).log10().ceil() as usize;
-            let mut layer_times = BTreeMap::new();
             let mut ctime = 0.25;
             let mut ztime = 0.0;
-            let mut kind_times = BTreeMap::new();
-            for (i, m) in moves.iter().enumerate() {
+            for m in moves.iter() {
+                let i = move_idx;
+                move_idx += 1;
+                if self.dump_summary {
+                    println!(
+                        "SUM {:9}[] {:.3} / {:.3} / {:.3}",
+                        i, m.start_v, m.cruise_v, m.end_v
+                    );
+                }
                 if self.dump_moves {
                     let mut kind = String::new();
                     if m.is_extrude_move() {
@@ -328,16 +340,15 @@ impl EstimateCmd {
                     kind_times.insert(move_kind.to_string(), m.total_time());
                 }
             }
+        }
+        println!("  Layer times:");
+        for (z, t) in layer_times.iter() {
+            println!("   {:7} => {}", (*z as f64) / 1000.0, format_time(*t));
+        }
 
-            println!("  Layer times:");
-            for (z, t) in layer_times.iter() {
-                println!("   {:7} => {}", (*z as f64) / 1000.0, format_time(*t));
-            }
-
-            println!("  Kind times:");
-            for (k, t) in kind_times.iter() {
-                println!("   {:20} => {}", format_time(*t), k);
-            }
+        println!("  Kind times:");
+        for (k, t) in kind_times.iter() {
+            println!("   {:20} => {}", format_time(*t), k);
         }
     }
 }
@@ -364,7 +375,7 @@ impl PostProcessCmd {
             if n % 1000 == 0 {
                 for c in planner.iter() {
                     match c {
-                        PlanningOperation::Dwell => total_time += 0.25,
+                        PlanningOperation::Dwell(t) => total_time += t,
                         PlanningOperation::Move(m) => total_time += m.total_time(),
                     }
                 }
@@ -375,7 +386,7 @@ impl PostProcessCmd {
 
         for c in planner.iter() {
             match c {
-                PlanningOperation::Dwell => total_time += 0.25,
+                PlanningOperation::Dwell(t) => total_time += t,
                 PlanningOperation::Move(m) => total_time += m.total_time(),
             }
         }

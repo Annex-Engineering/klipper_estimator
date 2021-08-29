@@ -32,11 +32,14 @@ impl Planner {
     /// Processes a gcode command through the planning engine and appends it to the currently
     /// open move sequence.
     pub fn process_cmd(&mut self, cmd: GCodeCommand) {
-        if Self::is_dwell(&cmd) {
+        if let Some(t) = Self::is_dwell(&cmd) {
             if let Some(seq) = self.sequences.back_mut() {
                 if !seq.is_empty() {
                     seq.flush();
-                    self.sequences.push_back(MoveSequence::default());
+                    self.sequences.push_back(MoveSequence {
+                        pause_before: t,
+                        ..MoveSequence::default()
+                    });
                 }
             }
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
@@ -146,20 +149,25 @@ impl Planner {
         self.sequences.back_mut().map(|seq| seq.flush());
     }
 
-    fn is_dwell(cmd: &GCodeCommand) -> bool {
+    fn is_dwell(cmd: &GCodeCommand) -> Option<f64> {
         match &cmd.op {
+            GCodeOperation::Traditional {
+                letter: 'G',
+                code: 4,
+                params,
+            } => Some(params.get_number('P').map_or(0.25, |v: f64| v / 1000.0)),
             GCodeOperation::Traditional {
                 letter: 'G',
                 code: 28,
                 ..
-            } => true,
+            } => Some(0.25),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 109 | 190,
                 ..
-            } => true,
-            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => true,
-            _ => false,
+            } => Some(0.25),
+            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => Some(0.25),
+            _ => None,
         }
     }
 
@@ -171,8 +179,8 @@ impl Planner {
             None => {
                 // There's no next move, if this isn't the active sequence then remove it
                 if self.sequences.len() > 1 {
-                    self.sequences.pop_front();
-                    Some(PlanningOperation::Dwell)
+                    let dwell_time = self.sequences.pop_front().unwrap().pause_before;
+                    Some(PlanningOperation::Dwell(dwell_time))
                 } else {
                     None
                 }
@@ -193,7 +201,7 @@ impl Planner {
 
 #[derive(Debug)]
 pub enum PlanningOperation {
-    Dwell,
+    Dwell(f64),
     Move(PlanningMove),
 }
 
@@ -426,6 +434,7 @@ impl PlanningMove {
 
 #[derive(Debug, Default)]
 pub struct MoveSequence {
+    pause_before: f64,
     moves: VecDeque<PlanningMove>,
     flush_count: usize,
 }
