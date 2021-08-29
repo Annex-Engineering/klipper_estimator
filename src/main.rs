@@ -16,7 +16,7 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
 #[derive(Clap, Debug)]
-#[clap(version = "0.0.1", author = "Lasse Dalegaard <dalegaard@gmail.com>")]
+#[clap(version = "0.0.2", author = "Lasse Dalegaard <dalegaard@gmail.com>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
     #[clap(long = "config_moonraker_url")]
