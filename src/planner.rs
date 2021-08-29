@@ -45,7 +45,18 @@ impl Planner {
             }
 
             let num_kinds = self.kind_to_index.len() as u16;
-            let move_kind = cmd.comment.as_ref().or(self.current_kind.as_ref());
+            let mut move_kind = cmd
+                .comment
+                .as_ref()
+                .or(self.current_kind.as_ref())
+                .map(|s| s.as_str());
+
+            // slic3r family outputs 'move to next layer (...)', we don't want that number
+            if let Some(mk) = move_kind {
+                if mk.starts_with("move to next layer ") {
+                    move_kind = Some("move to next layer");
+                }
+            }
 
             let kind_idx = match move_kind {
                 None => None,
