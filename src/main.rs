@@ -194,6 +194,8 @@ impl DumpConfigCmd {
 #[derive(Clap, Debug)]
 struct EstimateCmd {
     input: String,
+    #[clap(long = "dump_moves")]
+    dump_moves: bool,
 }
 
 impl EstimateCmd {
@@ -250,60 +252,62 @@ impl EstimateCmd {
             let mut ztime = 0.0;
             let mut kind_times = BTreeMap::new();
             for (i, m) in moves.iter().enumerate() {
-                let mut kind = String::new();
-                if m.is_extrude_move() {
-                    kind.push('E');
-                }
-                if m.is_kinematic_move() {
-                    kind.push('K');
-                }
-                println!(
-                    "   {:width$}[{}] @ {:.8} => {:.8} / z{:.8}:",
-                    i,
-                    kind,
-                    ctime,
-                    ctime + m.total_time(),
-                    ztime,
-                    width = width
-                );
-                println!(
-                    "    Path:       {:?} => {:?} [{:.3}∠{:.2}]",
-                    m.start,
-                    m.end,
-                    m.distance,
-                    m.rate.xy().angle_between(glam::DVec2::new(1.0, 0.0)) * 180.0
-                        / std::f64::consts::PI,
-                );
-                println!("    Axes {:?}", m.rate);
-                println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
-                println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
-                println!("    Kind: {:?}", planner.move_kind(&m));
-                println!("    Acceleration {:?}", m.acceleration);
-                println!("    Max dv2: {}", m.max_dv2);
-                println!("    Max start_v2: {}", m.max_start_v2);
-                println!("    Max smoothed_v2: {}", m.max_smoothed_v2);
-                println!(
-                    "    Velocity:   {} / {} / {}",
-                    m.start_v, m.cruise_v, m.end_v
-                );
-                println!(
-                    "    Time:       {:4}+{:4}+{:4}  = {:4}",
-                    m.accel_time(),
-                    m.cruise_time(),
-                    m.decel_time(),
-                    m.total_time(),
-                );
-                ctime += m.total_time();
+                if self.dump_moves {
+                    let mut kind = String::new();
+                    if m.is_extrude_move() {
+                        kind.push('E');
+                    }
+                    if m.is_kinematic_move() {
+                        kind.push('K');
+                    }
+                    println!(
+                        "   {:width$}[{}] @ {:.8} => {:.8} / z{:.8}:",
+                        i,
+                        kind,
+                        ctime,
+                        ctime + m.total_time(),
+                        ztime,
+                        width = width
+                    );
+                    println!(
+                        "    Path:       {:?} => {:?} [{:.3}∠{:.2}]",
+                        m.start,
+                        m.end,
+                        m.distance,
+                        m.rate.xy().angle_between(glam::DVec2::new(1.0, 0.0)) * 180.0
+                            / std::f64::consts::PI,
+                    );
+                    println!("    Axes {:?}", m.rate);
+                    println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
+                    println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
+                    println!("    Kind: {:?}", planner.move_kind(&m));
+                    println!("    Acceleration {:?}", m.acceleration);
+                    println!("    Max dv2: {}", m.max_dv2);
+                    println!("    Max start_v2: {}", m.max_start_v2);
+                    println!("    Max smoothed_v2: {}", m.max_smoothed_v2);
+                    println!(
+                        "    Velocity:   {} / {} / {}",
+                        m.start_v, m.cruise_v, m.end_v
+                    );
+                    println!(
+                        "    Time:       {:4}+{:4}+{:4}  = {:4}",
+                        m.accel_time(),
+                        m.cruise_time(),
+                        m.decel_time(),
+                        m.total_time(),
+                    );
+                    ctime += m.total_time();
 
-                println!(
-                    "    Distances:  {:.3}+{:.3}+{:.3} = {:.3}",
-                    m.accel_distance(),
-                    m.cruise_distance(),
-                    m.decel_distance(),
-                    m.distance
-                );
+                    println!(
+                        "    Distances:  {:.3}+{:.3}+{:.3} = {:.3}",
+                        m.accel_distance(),
+                        m.cruise_distance(),
+                        m.decel_distance(),
+                        m.distance
+                    );
 
-                println!();
+                    println!();
+                }
 
                 if (m.start.z - m.end.z).abs() < EPSILON {
                     *layer_times
