@@ -137,7 +137,7 @@ mod parser {
         if s.is_empty() {
             Ok(("", ()))
         } else {
-            space1(s).map(|(s, _)| (s, ()))
+            space0(s).map(|(s, _)| (s, ()))
         }
     }
 
