@@ -248,6 +248,7 @@ impl EstimateCmd {
             let mut layer_times = BTreeMap::new();
             let mut ctime = 0.25;
             let mut ztime = 0.0;
+            let mut kind_times = BTreeMap::new();
             for (i, m) in moves.iter().enumerate() {
                 let mut kind = String::new();
                 if m.is_extrude_move() {
@@ -311,11 +312,23 @@ impl EstimateCmd {
                 } else {
                     ztime += m.total_time();
                 }
+
+                let move_kind = planner.move_kind(&m).unwrap_or("Other");
+                if let Some(t) = kind_times.get_mut(move_kind) {
+                    *t += m.total_time();
+                } else {
+                    kind_times.insert(move_kind.to_string(), m.total_time());
+                }
             }
 
             println!("  Layer times:");
             for (z, t) in layer_times.iter() {
                 println!("   {:7} => {}", (*z as f64) / 1000.0, format_time(*t));
+            }
+
+            println!("  Kind times:");
+            for (k, t) in kind_times.iter() {
+                println!("   {:20} => {}", format_time(*t), k);
             }
         }
     }
