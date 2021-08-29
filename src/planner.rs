@@ -458,14 +458,12 @@ impl MoveSequence {
         let mut peak_cruise_v2 = 0.0;
 
         let mut update_flush_count = partial;
+        let skip = if partial { self.flush_count } else { 0 };
+        if !partial {
+            self.flush_count = self.moves.len();
+        }
 
-        for (idx, m) in self
-            .moves
-            .iter_mut()
-            .enumerate()
-            .skip(self.flush_count)
-            .rev()
-        {
+        for (idx, m) in self.moves.iter_mut().enumerate().skip(skip).rev() {
             let reachable_start_v2 = next_end_v2 + m.max_dv2;
             let start_v2 = m.max_start_v2.min(reachable_start_v2);
             let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
@@ -473,7 +471,7 @@ impl MoveSequence {
             if smoothed_v2 < reachable_smoothed_v2 {
                 if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty() {
                     if update_flush_count && peak_cruise_v2 != 0.0 {
-                        self.flush_count = idx + 1;
+                        self.flush_count = idx;
                         update_flush_count = false;
                     }
 
@@ -482,23 +480,27 @@ impl MoveSequence {
                         .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
 
                     if !delayed.is_empty() {
-                        let mut mc_v2 = peak_cruise_v2;
-                        for (m, ms_v2, me_v2) in delayed.into_iter().rev() {
-                            mc_v2 = mc_v2.min(ms_v2);
-                            m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
+                        if !update_flush_count && idx < self.flush_count {
+                            let mut mc_v2 = peak_cruise_v2;
+                            for (m, ms_v2, me_v2) in delayed.iter_mut().rev() {
+                                mc_v2 = mc_v2.min(*ms_v2);
+                                m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
+                            }
                         }
-                        delayed = Vec::new();
+                        delayed.clear();
                     }
                 }
 
-                let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
-                    .min(m.max_cruise_v2)
-                    .min(peak_cruise_v2);
-                m.set_junction(
-                    start_v2.min(cruise_v2),
-                    cruise_v2,
-                    next_end_v2.min(cruise_v2),
-                );
+                if !update_flush_count && idx < self.flush_count {
+                    let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
+                        .min(m.max_cruise_v2)
+                        .min(peak_cruise_v2);
+                    m.set_junction(
+                        start_v2.min(cruise_v2),
+                        cruise_v2,
+                        next_end_v2.min(cruise_v2),
+                    );
+                }
             } else {
                 delayed.push((m, start_v2, next_end_v2));
             }
@@ -506,9 +508,8 @@ impl MoveSequence {
             next_smoothed_v2 = smoothed_v2;
         }
 
-        // We flushed to the end
-        if !partial {
-            self.flush_count = self.moves.len();
+        if update_flush_count {
+            self.flush_count = 0;
         }
     }
 
