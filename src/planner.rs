@@ -10,16 +10,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug)]
 pub struct Planner {
     sequences: VecDeque<MoveSequence>,
-    pub move_kinds: HashMap<String, u16>,
     pub toolhead_state: ToolheadState,
+    pub current_kind: Option<String>,
+    pub kind_to_index: HashMap<String, u16>,
+    pub index_to_kind: HashMap<u16, String>,
 }
 
 impl Default for Planner {
     fn default() -> Planner {
         Planner {
             sequences: [MoveSequence::default()].into(),
-            move_kinds: HashMap::new(),
             toolhead_state: ToolheadState::default(),
+            current_kind: None,
+            kind_to_index: HashMap::new(),
+            index_to_kind: HashMap::new(),
         }
     }
 }
@@ -40,14 +44,25 @@ impl Planner {
                 self.toolhead_state.set_speed(v / 60.0);
             }
 
-            let num_kinds = self.move_kinds.len() as u16;
-            let move_kind = cmd
-                .comment
-                .map(|comment| *self.move_kinds.entry(comment).or_insert_with(|| num_kinds));
+            let num_kinds = self.kind_to_index.len() as u16;
+            let move_kind = cmd.comment.as_ref().or(self.current_kind.as_ref());
+
+            let kind_idx = match move_kind {
+                None => None,
+                Some(s) => {
+                    if let Some(idx) = self.kind_to_index.get(s) {
+                        Some(*idx)
+                    } else {
+                        self.kind_to_index.insert(s.into(), num_kinds);
+                        self.index_to_kind.insert(num_kinds, s.into());
+                        Some(num_kinds)
+                    }
+                }
+            };
 
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
                 let mut m = self.toolhead_state.perform_move([*x, *y, *z, *e]);
-                m.kind = move_kind;
+                m.kind = kind_idx;
                 self.sequences
                     .back_mut()
                     .unwrap()
@@ -105,6 +120,13 @@ impl Planner {
                     self.toolhead_state.limits.set_square_corner_velocity(v);
                 }
             }
+        } else if cmd.op.is_nop() && cmd.comment.is_some() {
+            let comment = cmd.comment.unwrap(); // Same, we checked for is_some
+
+            if comment.starts_with("TYPE:") {
+                // IdeaMaker only gives us `TYPE:`s
+                self.current_kind = Some(comment[5..].into());
+            }
         }
     }
 
@@ -149,6 +171,12 @@ impl Planner {
 
     pub fn iter(&mut self) -> PlanningOperationIter {
         PlanningOperationIter { planner: self }
+    }
+
+    pub fn move_kind<'a>(&'a mut self, m: &PlanningMove) -> Option<&'a str> {
+        let kind = m.kind?;
+        let kind_str = self.index_to_kind.get(&kind)?;
+        Some(kind_str.as_str())
     }
 }
 

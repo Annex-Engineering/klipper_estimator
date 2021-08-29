@@ -214,8 +214,6 @@ impl EstimateCmd {
 
         planner.finalize();
 
-        // let move_kinds: BTreeMap<_, _> = planner.move_kinds.iter().map(|(k, v)| (v, k)).collect();
-
         println!("Sequences:");
 
         let ops: Vec<_> = planner.iter().collect();
@@ -278,10 +276,7 @@ impl EstimateCmd {
                 println!("    Axes {:?}", m.rate);
                 println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
                 println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
-                // println!(
-                //     "    Kind: {:?}",
-                //     m.kind.as_ref().and_then(|v| move_kinds.get(v))
-                // );
+                println!("    Kind: {:?}", planner.move_kind(&m));
                 println!("    Acceleration {:?}", m.acceleration);
                 println!("    Max dv2: {}", m.max_dv2);
                 println!("    Max start_v2: {}", m.max_start_v2);
