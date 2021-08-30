@@ -1,0 +1,55 @@
+name: Build release
+
+on:
+  create:
+    tags:
+      - v*
+
+  workflow_dispatch:
+
+jobs:
+  build_windows:
+    runs-on: [self-hosted, linux]
+    
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+    
+    env:
+      RUST_BACKTRACE: full
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 1000M
+      SCCACHE_DIR: /home/dalegaard/.cache/sccache
+      SCCACHE_IDLE_TIMEOUT: 0
+      
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+      - name: Start sccache server
+        run: sccache --start-server
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target ${{ matrix.target }} --release
+      - name: Stop sccache server
+        run: sccache --stop-server
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/klipper_estimator_rs
+            target/${{ matrix.target }}/release/klipper_estimator_rs.exe
+          if-no-files-found: ignore
