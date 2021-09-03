@@ -65,7 +65,7 @@ impl Opts {
 
         // Was moonraker config requested? If so, try to grab that first.
         if let Some(url) = &self.config_moonraker {
-            moonraker_config(&url, &mut limits)?;
+            moonraker_config(url, &mut limits)?;
         }
 
         Ok(limits)
@@ -295,7 +295,7 @@ impl EstimateCmd {
                     println!("    Axes {:?}", m.rate);
                     println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
                     println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
-                    println!("    Kind: {:?}", planner.move_kind(&m));
+                    println!("    Kind: {:?}", planner.move_kind(m));
                     println!("    Acceleration {:?}", m.acceleration);
                     println!("    Max dv2: {}", m.max_dv2);
                     println!("    Max start_v2: {}", m.max_start_v2);
@@ -333,7 +333,7 @@ impl EstimateCmd {
                     ztime += m.total_time();
                 }
 
-                let move_kind = planner.move_kind(&m).unwrap_or("Other");
+                let move_kind = planner.move_kind(m).unwrap_or("Other");
                 if let Some(t) = kind_times.get_mut(move_kind) {
                     *t += m.total_time();
                 } else {

@@ -24,10 +24,7 @@ pub enum GCodeOperation {
 
 impl GCodeOperation {
     pub fn is_nop(&self) -> bool {
-        match self {
-            GCodeOperation::Nop => true,
-            _ => false,
-        }
+        matches!(self, GCodeOperation::Nop)
     }
 }
 

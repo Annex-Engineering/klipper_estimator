@@ -7,13 +7,43 @@ use glam::Vec4Swizzles;
 pub use glam::{DVec3 as Vec3, DVec4 as Vec4};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Default)]
+pub struct KindTracker {
+    pub i2k: HashMap<String, u16>,
+    pub k2i: HashMap<u16, String>,
+}
+
+impl KindTracker {
+    pub fn new() -> KindTracker {
+        Self::default()
+    }
+
+    pub fn get_kind(&mut self, s: &str) -> Kind {
+        match self.i2k.get(s) {
+            Some(k) => Kind(*k),
+            None => {
+                let k = self.i2k.len() as u16;
+                self.i2k.insert(s.into(), k);
+                self.k2i.insert(k, s.into());
+                Kind(k)
+            }
+        }
+    }
+
+    pub fn resolve_kind(&self, k: Kind) -> &str {
+        self.k2i.get(&k.0).expect("missing kind")
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Kind(u16);
+
 #[derive(Debug)]
 pub struct Planner {
     sequences: VecDeque<MoveSequence>,
     pub toolhead_state: ToolheadState,
-    pub current_kind: Option<String>,
-    pub kind_to_index: HashMap<String, u16>,
-    pub index_to_kind: HashMap<u16, String>,
+    pub kind_tracker: KindTracker,
+    pub current_kind: Option<Kind>,
 }
 
 impl Default for Planner {
@@ -21,9 +51,8 @@ impl Default for Planner {
         Planner {
             sequences: [MoveSequence::default()].into(),
             toolhead_state: ToolheadState::default(),
+            kind_tracker: KindTracker::new(),
             current_kind: None,
-            kind_to_index: HashMap::new(),
-            index_to_kind: HashMap::new(),
         }
     }
 }
@@ -47,36 +76,22 @@ impl Planner {
                 self.toolhead_state.set_speed(v / 60.0);
             }
 
-            let num_kinds = self.kind_to_index.len() as u16;
-            let mut move_kind = cmd
+            let move_kind = cmd
                 .comment
                 .as_ref()
-                .or(self.current_kind.as_ref())
-                .map(|s| s.as_str());
-
-            // slic3r family outputs 'move to next layer (...)', we don't want that number
-            if let Some(mk) = move_kind {
-                if mk.starts_with("move to next layer ") {
-                    move_kind = Some("move to next layer");
-                }
-            }
-
-            let kind_idx = match move_kind {
-                None => None,
-                Some(s) => {
-                    if let Some(idx) = self.kind_to_index.get(s) {
-                        Some(*idx)
+                .map(|s| {
+                    if s.starts_with("move to next layer ") {
+                        "move to next layer"
                     } else {
-                        self.kind_to_index.insert(s.into(), num_kinds);
-                        self.index_to_kind.insert(num_kinds, s.into());
-                        Some(num_kinds)
+                        s.as_ref()
                     }
-                }
-            };
+                })
+                .map(|s| self.kind_tracker.get_kind(s))
+                .or(self.current_kind);
 
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
                 let mut m = self.toolhead_state.perform_move([*x, *y, *z, *e]);
-                m.kind = kind_idx;
+                m.kind = move_kind;
                 self.sequences
                     .back_mut()
                     .unwrap()
@@ -137,16 +152,18 @@ impl Planner {
         } else if cmd.op.is_nop() && cmd.comment.is_some() {
             let comment = cmd.comment.unwrap(); // Same, we checked for is_some
 
-            if comment.starts_with("TYPE:") {
+            if let Some(comment) = comment.strip_prefix("TYPE:") {
                 // IdeaMaker only gives us `TYPE:`s
-                self.current_kind = Some(comment[5..].into());
+                self.current_kind = Some(self.kind_tracker.get_kind(comment));
             }
         }
     }
 
     /// Performs final processing on the final sequence, if one is active.
     pub fn finalize(&mut self) {
-        self.sequences.back_mut().map(|seq| seq.flush());
+        if let Some(seq) = self.sequences.back_mut() {
+            seq.flush();
+        }
     }
 
     fn is_dwell(cmd: &GCodeCommand) -> Option<f64> {
@@ -175,7 +192,7 @@ impl Planner {
         let fseq = self.sequences.front_mut().unwrap();
 
         match fseq.next_move() {
-            Some(m) => return Some(PlanningOperation::Move(m)),
+            Some(m) => Some(PlanningOperation::Move(m)),
             None => {
                 // There's no next move, if this isn't the active sequence then remove it
                 if self.sequences.len() > 1 {
@@ -192,10 +209,8 @@ impl Planner {
         PlanningOperationIter { planner: self }
     }
 
-    pub fn move_kind<'a>(&'a mut self, m: &PlanningMove) -> Option<&'a str> {
-        let kind = m.kind?;
-        let kind_str = self.index_to_kind.get(&kind)?;
-        Some(kind_str.as_str())
+    pub fn move_kind<'a>(&'a self, m: &PlanningMove) -> Option<&'a str> {
+        m.kind.map(|k| self.kind_tracker.resolve_kind(k))
     }
 }
 
@@ -207,10 +222,7 @@ pub enum PlanningOperation {
 
 impl PlanningOperation {
     pub fn is_move(&self) -> bool {
-        match self {
-            Self::Move(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Move(_))
     }
 
     pub fn get_move(&self) -> Option<PlanningMove> {
@@ -248,7 +260,7 @@ pub struct PlanningMove {
     pub max_smoothed_v2: f64,
     pub smoothed_dv2: f64,
 
-    pub kind: Option<u16>,
+    pub kind: Option<Kind>,
 
     pub start_v: f64,
     pub cruise_v: f64,
