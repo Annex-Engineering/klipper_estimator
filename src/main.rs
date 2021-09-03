@@ -1,4 +1,5 @@
 mod gcode;
+mod kind_tracker;
 mod planner;
 
 use std::collections::BTreeMap;
