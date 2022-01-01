@@ -152,6 +152,7 @@ mod parser {
     fn traditional_gcode(s: &str) -> IResult<&str, RawTraditionalGcode> {
         let (s, letter) = satisfy(|c| c.is_alphabetic())(s)?;
         let (s, code) = match lexical_core::parse_partial::<u16>(s.as_bytes()) {
+            Ok((_, 0)) => return Err(Err::Error(Error::from_error_kind(s, ErrorKind::Digit))),
             Ok((value, processed)) => (s.slice(processed..), value),
             Err(_) => return Err(Err::Error(Error::from_error_kind(s, ErrorKind::Digit))),
         };

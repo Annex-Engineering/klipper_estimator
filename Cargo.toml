@@ -1,25 +1,5 @@
-[package]
-name = "klipper_estimator_rs"
-version = "0.1.0"
-edition = "2018"
-build = "build.rs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[profile.release]
-lto = "thin"
-
-[dependencies]
-nom = "7"
-lexical-core = "^0.7"
-glam = { version = "0.18", features = ["serde"] }
-clap = "3.0.0-beta.4"
-reqwest = { version = "^0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-serde = { version = "^1", features = ["derive"] }
-serde_json = "^1"
-deser-hjson = "^1"
-once_cell = "1.8.0"
-
-[build-dependencies]
-vergen = "^5"
-anyhow = "^1"
+[workspace]
+members = [
+  "lib",
+  "tool"
+]

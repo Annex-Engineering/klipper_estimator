@@ -1,24 +1,19 @@
-mod gcode;
-mod kind_tracker;
-mod planner;
-
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 
-use gcode::{GCodeCommand, GCodeOperation, GCodeReader};
-use planner::{PlanningOperation, PrinterLimits, Vec3};
+use klipper_estimator::gcode::GCodeReader;
+use klipper_estimator::glam::{DVec2, DVec3, Vec4Swizzles};
+use klipper_estimator::planner::{MoveChecker, Planner, PlanningOperation, PrinterLimits};
 use std::f64::EPSILON;
 
-use clap::{AppSettings, Clap};
-use glam::Vec4Swizzles;
+use clap::Parser;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"), author = "Lasse Dalegaard <dalegaard@gmail.com>")]
-#[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,
@@ -105,7 +100,6 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
 
     #[derive(Debug, Deserialize)]
     struct PrinterConfig {
-        kinematics: String,
         max_velocity: f64,
         max_accel: f64,
         max_accel_to_decel: f64,
@@ -140,33 +134,41 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
     target.set_instant_corner_velocity(cfg.extruder.instantaneous_corner_velocity);
 
     let limits = [
-        (Vec3::X, cfg.printer.max_x_velocity, cfg.printer.max_x_accel),
-        (Vec3::Y, cfg.printer.max_y_velocity, cfg.printer.max_y_accel),
-        (Vec3::Z, cfg.printer.max_z_velocity, cfg.printer.max_z_accel),
+        (
+            DVec3::X,
+            cfg.printer.max_x_velocity,
+            cfg.printer.max_x_accel,
+        ),
+        (
+            DVec3::Y,
+            cfg.printer.max_y_velocity,
+            cfg.printer.max_y_accel,
+        ),
+        (
+            DVec3::Z,
+            cfg.printer.max_z_velocity,
+            cfg.printer.max_z_accel,
+        ),
     ];
 
     for (axis, m, a) in limits {
         if let (Some(max_velocity), Some(max_accel)) = (m, a) {
-            target
-                .move_checkers
-                .push(planner::MoveChecker::AxisLimiter {
-                    axis,
-                    max_velocity,
-                    max_accel,
-                });
+            target.move_checkers.push(MoveChecker::AxisLimiter {
+                axis,
+                max_velocity,
+                max_accel,
+            });
         }
     }
 
-    target
-        .move_checkers
-        .push(planner::MoveChecker::ExtruderLimiter {
-            max_velocity: cfg.extruder.max_extrude_only_velocity,
-            max_accel: cfg.extruder.max_extrude_only_accel,
-        });
+    target.move_checkers.push(MoveChecker::ExtruderLimiter {
+        max_velocity: cfg.extruder.max_extrude_only_velocity,
+        max_accel: cfg.extruder.max_extrude_only_accel,
+    });
     Ok(())
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 enum SubCommand {
     Estimate(EstimateCmd),
     PostProcess(PostProcessCmd),
@@ -183,7 +185,7 @@ impl SubCommand {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 struct DumpConfigCmd;
 
 impl DumpConfigCmd {
@@ -192,7 +194,7 @@ impl DumpConfigCmd {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 struct EstimateCmd {
     input: String,
     #[clap(long = "dump_moves")]
@@ -209,7 +211,7 @@ impl EstimateCmd {
         };
         let rdr = GCodeReader::new(BufReader::new(src));
 
-        let mut planner = planner::Planner::default();
+        let mut planner = Planner::default();
         planner.toolhead_state.limits = opts.printer_limits().clone();
 
         for cmd in rdr {
@@ -290,7 +292,7 @@ impl EstimateCmd {
                         m.start,
                         m.end,
                         m.distance,
-                        m.rate.xy().angle_between(glam::DVec2::new(1.0, 0.0)) * 180.0
+                        m.rate.xy().angle_between(DVec2::new(1.0, 0.0)) * 180.0
                             / std::f64::consts::PI,
                     );
                     println!("    Axes {:?}", m.rate);
@@ -354,7 +356,7 @@ impl EstimateCmd {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 struct PostProcessCmd {
     filename: String,
 }
@@ -364,7 +366,7 @@ impl PostProcessCmd {
         let src = File::open(&self.filename).expect("opening gcode file failed");
         let rdr = GCodeReader::new(BufReader::new(src));
 
-        let mut planner = planner::Planner::default();
+        let mut planner = Planner::default();
         planner.toolhead_state.limits = opts.printer_limits().clone();
 
         let mut total_time = 0.25;

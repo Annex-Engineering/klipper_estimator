@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::f64::EPSILON;
 
-use crate::{GCodeCommand, GCodeOperation};
+use crate::gcode::{GCodeCommand, GCodeOperation};
 
 use crate::kind_tracker::{Kind, KindTracker};
 use glam::Vec4Swizzles;
-pub use glam::{DVec3 as Vec3, DVec4 as Vec4};
+use glam::{DVec3 as Vec3, DVec4 as Vec4};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
