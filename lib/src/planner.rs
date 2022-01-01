@@ -147,13 +147,13 @@ impl Planner {
                 letter: 'G',
                 code: 28,
                 ..
-            } => Some(0.25),
+            } => Some(0.1),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 109 | 190,
                 ..
-            } => Some(0.25),
-            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => Some(0.25),
+            } => Some(0.1),
+            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => Some(0.1),
             _ => None,
         }
     }
