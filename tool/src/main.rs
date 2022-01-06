@@ -5,7 +5,9 @@ use std::io::BufReader;
 
 use klipper_estimator::gcode::GCodeReader;
 use klipper_estimator::glam::{DVec2, DVec3, Vec4Swizzles};
-use klipper_estimator::planner::{MoveChecker, Planner, PlanningOperation, PrinterLimits};
+use klipper_estimator::planner::{
+    FirmwareRetractionOptions, MoveChecker, Planner, PlanningOperation, PrinterLimits,
+};
 use std::f64::EPSILON;
 
 use clap::Parser;
@@ -96,6 +98,7 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
     struct MoonrakerConfig {
         printer: PrinterConfig,
         extruder: ExtruderConfig,
+        firmware_retraction: Option<FirmwareRetractionConfig>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -120,6 +123,16 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
         instantaneous_corner_velocity: f64,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct FirmwareRetractionConfig {
+        retract_length: f64,
+        unretract_extra_length: f64,
+        unretract_speed: f64,
+        retract_speed: f64,
+        #[serde(default)]
+        lift_z: f64,
+    }
+
     let cfg = reqwest::blocking::get(url)?
         .json::<MoonrakerResultRoot>()?
         .result
@@ -132,6 +145,14 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
     target.set_max_accel_to_decel(cfg.printer.max_accel_to_decel);
     target.set_square_corner_velocity(cfg.printer.square_corner_velocity);
     target.set_instant_corner_velocity(cfg.extruder.instantaneous_corner_velocity);
+
+    target.firmware_retraction = cfg.firmware_retraction.map(|fr| FirmwareRetractionOptions {
+        retract_length: fr.retract_length,
+        unretract_extra_length: fr.unretract_extra_length,
+        unretract_speed: fr.unretract_speed,
+        retract_speed: fr.retract_speed,
+        lift_z: fr.lift_z,
+    });
 
     let limits = [
         (
@@ -211,8 +232,7 @@ impl EstimateCmd {
         };
         let rdr = GCodeReader::new(BufReader::new(src));
 
-        let mut planner = Planner::default();
-        planner.toolhead_state.limits = opts.printer_limits().clone();
+        let mut planner = Planner::from_limits(opts.printer_limits().clone());
 
         for cmd in rdr {
             let cmd = cmd.expect("gcode read");
@@ -366,8 +386,7 @@ impl PostProcessCmd {
         let src = File::open(&self.filename).expect("opening gcode file failed");
         let rdr = GCodeReader::new(BufReader::new(src));
 
-        let mut planner = Planner::default();
-        planner.toolhead_state.limits = opts.printer_limits().clone();
+        let mut planner = Planner::from_limits(opts.printer_limits().clone());
 
         let mut total_time = 0.25;
 

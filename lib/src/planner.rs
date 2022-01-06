@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::f64::EPSILON;
 
-use crate::gcode::{GCodeCommand, GCodeOperation};
+use crate::gcode::{GCodeCommand, GCodeExtendedParams, GCodeOperation};
 
 use crate::kind_tracker::{Kind, KindTracker};
 use glam::Vec4Swizzles;
@@ -14,20 +14,24 @@ pub struct Planner {
     pub toolhead_state: ToolheadState,
     pub kind_tracker: KindTracker,
     pub current_kind: Option<Kind>,
-}
-
-impl Default for Planner {
-    fn default() -> Planner {
-        Planner {
-            sequences: [MoveSequence::default()].into(),
-            toolhead_state: ToolheadState::default(),
-            kind_tracker: KindTracker::new(),
-            current_kind: None,
-        }
-    }
+    pub firmware_retraction: Option<FirmwareRetractionState>,
 }
 
 impl Planner {
+    pub fn from_limits(limits: PrinterLimits) -> Planner {
+        let firmware_retraction = limits
+            .firmware_retraction
+            .as_ref()
+            .map(|_| FirmwareRetractionState::default());
+        Planner {
+            sequences: [MoveSequence::default()].into(),
+            toolhead_state: ToolheadState::from_limits(limits),
+            kind_tracker: KindTracker::new(),
+            current_kind: None,
+            firmware_retraction,
+        }
+    }
+
     /// Processes a gcode command through the planning engine and appends it to the currently
     /// open move sequence.
     pub fn process_cmd(&mut self, cmd: GCodeCommand) {
@@ -74,6 +78,22 @@ impl Planner {
         } = &cmd.op
         {
             match (letter, code) {
+                ('G', 10) => {
+                    let kt = &mut self.kind_tracker;
+                    let m = &mut self.toolhead_state;
+                    let seq = self.sequences.back_mut().unwrap();
+                    self.firmware_retraction
+                        .as_mut()
+                        .map(|fr| fr.retract(kt, m, seq));
+                }
+                ('G', 11) => {
+                    let kt = &mut self.kind_tracker;
+                    let m = &mut self.toolhead_state;
+                    let seq = self.sequences.back_mut().unwrap();
+                    self.firmware_retraction
+                        .as_mut()
+                        .map(|fr| fr.unretract(kt, m, seq));
+                }
                 ('G', 92) => {
                     if let Some(v) = params.get_number::<f64>('X') {
                         self.toolhead_state.position.x = v;
@@ -105,19 +125,28 @@ impl Planner {
                 _ => {}
             }
         } else if let GCodeOperation::Extended { cmd, params } = &cmd.op {
-            if cmd.as_str() == "set_velocity_limit" {
-                if let Some(v) = params.get_number::<f64>("velocity") {
-                    self.toolhead_state.limits.set_max_velocity(v);
+            match cmd.as_str() {
+                "set_velocity_limit" => {
+                    if let Some(v) = params.get_number::<f64>("velocity") {
+                        self.toolhead_state.limits.set_max_velocity(v);
+                    }
+                    if let Some(v) = params.get_number::<f64>("accel") {
+                        self.toolhead_state.limits.set_max_acceleration(v);
+                    }
+                    if let Some(v) = params.get_number::<f64>("accel_to_decel") {
+                        self.toolhead_state.limits.set_max_accel_to_decel(v);
+                    }
+                    if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
+                        self.toolhead_state.limits.set_square_corner_velocity(v);
+                    }
                 }
-                if let Some(v) = params.get_number::<f64>("accel") {
-                    self.toolhead_state.limits.set_max_acceleration(v);
+                "set_retraction" => {
+                    let m = &mut self.toolhead_state;
+                    self.firmware_retraction
+                        .as_ref()
+                        .map(|fr| fr.set_options(m, params));
                 }
-                if let Some(v) = params.get_number::<f64>("accel_to_decel") {
-                    self.toolhead_state.limits.set_max_accel_to_decel(v);
-                }
-                if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
-                    self.toolhead_state.limits.set_square_corner_velocity(v);
-                }
+                _ => {}
             }
         } else if cmd.op.is_nop() && cmd.comment.is_some() {
             let comment = cmd.comment.unwrap(); // Same, we checked for is_some
@@ -534,6 +563,8 @@ pub struct PrinterLimits {
     pub junction_deviation: f64,
     pub instant_corner_velocity: f64,
     pub move_checkers: Vec<MoveChecker>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub firmware_retraction: Option<FirmwareRetractionOptions>,
 }
 
 impl Default for PrinterLimits {
@@ -546,6 +577,7 @@ impl Default for PrinterLimits {
             junction_deviation: Self::scv_to_jd(5.0, 100000.0),
             instant_corner_velocity: 1.0,
             move_checkers: vec![],
+            firmware_retraction: None,
         }
     }
 }
@@ -593,6 +625,21 @@ impl Default for PositionMode {
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(num: &f64) -> bool {
+    *num < f64::EPSILON
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct FirmwareRetractionOptions {
+    pub retract_length: f64,
+    pub unretract_extra_length: f64,
+    pub unretract_speed: f64,
+    pub retract_speed: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lift_z: f64,
+}
+
 #[derive(Debug)]
 pub struct ToolheadState {
     pub position: Vec4,
@@ -602,9 +649,8 @@ pub struct ToolheadState {
     pub velocity: f64,
 }
 
-impl Default for ToolheadState {
-    fn default() -> Self {
-        let limits = PrinterLimits::default();
+impl ToolheadState {
+    fn from_limits(limits: PrinterLimits) -> Self {
         ToolheadState {
             position: Vec4::ZERO,
             position_modes: [
@@ -617,9 +663,7 @@ impl Default for ToolheadState {
             limits,
         }
     }
-}
 
-impl ToolheadState {
     pub fn perform_move(&mut self, axes: [Option<f64>; 4]) -> PlanningMove {
         let mut new_pos = self.position;
 
@@ -637,6 +681,19 @@ impl ToolheadState {
         }
 
         self.position = new_pos;
+        pm
+    }
+
+    fn perform_relative_move(
+        &mut self,
+        axes: [Option<f64>; 4],
+        kind: Option<Kind>,
+    ) -> PlanningMove {
+        let cur_pos_mode = self.position_modes;
+        self.position_modes = [PositionMode::Relative; 4];
+        let mut pm = self.perform_move(axes);
+        pm.kind = kind;
+        self.position_modes = cur_pos_mode;
         pm
     }
 
@@ -707,6 +764,115 @@ impl MoveChecker {
         if move_cmd.rate.xy() == glam::DVec2::ZERO || e_rate < 0.0 {
             let inv_extrude_r = 1.0 / e_rate.abs();
             move_cmd.limit_speed(max_velocity * inv_extrude_r, max_accel * inv_extrude_r);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum FirmwareRetractionState {
+    Unretracted,
+    Retracted {
+        lifted_z: f64,
+        retracted_length: f64,
+    },
+}
+
+impl Default for FirmwareRetractionState {
+    fn default() -> Self {
+        FirmwareRetractionState::Unretracted
+    }
+}
+
+impl FirmwareRetractionState {
+    fn set_options(&self, toolhead_state: &mut ToolheadState, params: &GCodeExtendedParams) {
+        let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
+        if let Some(v) = params.get_number::<f64>("retract_length") {
+            settings.retract_length = v.max(0.0);
+        }
+        if let Some(v) = params.get_number::<f64>("retract_speed") {
+            settings.retract_speed = v.max(0.0);
+        }
+        if let Some(v) = params.get_number::<f64>("unretract_extra_length") {
+            settings.unretract_extra_length = v.max(0.0);
+        }
+        if let Some(v) = params.get_number::<f64>("unretract_speed") {
+            settings.unretract_speed = v.max(0.0);
+        }
+        if let Some(v) = params.get_number::<f64>("lift_z") {
+            settings.lift_z = v.max(0.0);
+        }
+    }
+
+    fn retract(
+        &mut self,
+        kind_tracker: &mut KindTracker,
+        toolhead_state: &mut ToolheadState,
+        move_sequence: &mut MoveSequence,
+    ) {
+        if let FirmwareRetractionState::Unretracted = self {
+            let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
+            let lifted_z = settings.lift_z;
+            let retracted_length = settings.retract_length;
+
+            if retracted_length > 0.0 {
+                move_sequence.add_move(
+                    toolhead_state.perform_relative_move(
+                        [None, None, None, Some(retracted_length)],
+                        Some(kind_tracker.get_kind("Firmware retract")),
+                    ),
+                    toolhead_state,
+                );
+            }
+
+            if lifted_z > 0.0 {
+                move_sequence.add_move(
+                    toolhead_state.perform_relative_move(
+                        [None, None, Some(lifted_z), None],
+                        Some(kind_tracker.get_kind("Firmware retract Z hop")),
+                    ),
+                    toolhead_state,
+                );
+            }
+
+            *self = FirmwareRetractionState::Retracted {
+                lifted_z,
+                retracted_length,
+            };
+        }
+    }
+
+    fn unretract(
+        &mut self,
+        kind_tracker: &mut KindTracker,
+        toolhead_state: &mut ToolheadState,
+        move_sequence: &mut MoveSequence,
+    ) {
+        if let FirmwareRetractionState::Retracted {
+            lifted_z,
+            retracted_length,
+        } = self
+        {
+            if *retracted_length > 0.0 {
+                move_sequence.add_move(
+                    toolhead_state.perform_relative_move(
+                        [None, None, None, Some(-*retracted_length)],
+                        Some(kind_tracker.get_kind("Firmware unretract")),
+                    ),
+                    toolhead_state,
+                );
+            }
+
+            if *lifted_z > 0.0 {
+                move_sequence.add_move(
+                    toolhead_state.perform_relative_move(
+                        [None, None, Some(-*lifted_z), None],
+                        Some(kind_tracker.get_kind("Firmware unretract Z hop")),
+                    ),
+                    toolhead_state,
+                );
+            }
+
+            *self = FirmwareRetractionState::Unretracted;
         }
     }
 }
