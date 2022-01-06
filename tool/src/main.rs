@@ -350,7 +350,7 @@ impl EstimateCmd {
 
                 if (m.start.z - m.end.z).abs() < EPSILON {
                     *layer_times
-                        .entry((m.start.z * 1000.0) as usize)
+                        .entry((m.start.z * 1000.0).round() as usize)
                         .or_insert(0.0) += m.total_time();
                 } else {
                     ztime += m.total_time();
