@@ -34,8 +34,8 @@ impl Planner {
 
     /// Processes a gcode command through the planning engine and appends it to the currently
     /// open move sequence.
-    pub fn process_cmd(&mut self, cmd: GCodeCommand) {
-        if let Some(t) = Self::is_dwell(&cmd) {
+    pub fn process_cmd(&mut self, cmd: &GCodeCommand) {
+        if let Some(t) = Self::is_dwell(cmd) {
             if let Some(seq) = self.sequences.back_mut() {
                 if !seq.is_empty() {
                     seq.flush();
@@ -60,7 +60,7 @@ impl Planner {
                         s.as_ref()
                     }
                 })
-                .map(|s| self.kind_tracker.get_kind(s))
+                .map(|s| self.kind_tracker.get_kind(s.trim()))
                 .or(self.current_kind);
 
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
@@ -149,7 +149,7 @@ impl Planner {
                 _ => {}
             }
         } else if cmd.op.is_nop() && cmd.comment.is_some() {
-            let comment = cmd.comment.unwrap(); // Same, we checked for is_some
+            let comment = cmd.comment.as_ref().unwrap(); // Same, we checked for is_some
 
             if let Some(comment) = comment.strip_prefix("TYPE:") {
                 // IdeaMaker only gives us `TYPE:`s

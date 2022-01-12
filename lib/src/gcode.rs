@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::io::{self, BufRead};
+
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub enum GCodeOperation {
@@ -28,10 +31,61 @@ impl GCodeOperation {
     }
 }
 
+impl Display for GCodeOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GCodeOperation::Nop => Ok(()),
+            GCodeOperation::Move { x, y, z, e, f: f_ } => {
+                write!(f, "G1")?;
+                if let Some(x) = x {
+                    write!(f, " X{}", x)?;
+                }
+                if let Some(v) = y {
+                    write!(f, " Y{}", v)?;
+                }
+                if let Some(v) = z {
+                    write!(f, " Z{}", v)?;
+                }
+                if let Some(v) = e {
+                    write!(f, " E{}", v)?;
+                }
+                if let Some(v) = f_ {
+                    write!(f, " F{}", v)?;
+                }
+                Ok(())
+            }
+            GCodeOperation::Traditional {
+                letter,
+                code,
+                params,
+            } => {
+                write!(f, "{}{}", letter, code)?;
+                if params.len() > 0 {
+                    write!(f, " ")?;
+                    params.fmt(f)?;
+                }
+                Ok(())
+            }
+            GCodeOperation::Extended { cmd, params } => {
+                write!(f, "{}", cmd)?;
+                if params.len() > 0 {
+                    write!(f, " ")?;
+                    params.fmt(f)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GCodeTraditionalParams(Vec<(char, String)>);
 
 impl GCodeTraditionalParams {
+    pub fn from_vec(vec: Vec<(char, String)>) -> Self {
+        Self(vec)
+    }
+
     pub fn get_string(&self, key: char) -> Option<&str> {
         self.0.iter().find(|(c, _)| *c == key).map(|v| v.1.as_str())
     }
@@ -40,6 +94,24 @@ impl GCodeTraditionalParams {
         self.get_string(key)
             .map(|v| lexical_core::parse(v.as_bytes()).ok())
             .flatten()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Display for GCodeTraditionalParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (c, v) in &self.0 {
+            if !first {
+                write!(f, " ")?;
+            }
+            first = false;
+            write!(f, "{}{}", c, v)?;
+        }
+        Ok(())
     }
 }
 
@@ -56,12 +128,66 @@ impl GCodeExtendedParams {
             .map(|v| lexical_core::parse(v.as_bytes()).ok())
             .flatten()
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn requires_quotes(s: &str) -> bool {
+        s.contains(char::is_whitespace)
+    }
+}
+
+impl Display for GCodeExtendedParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (k, v) in &self.0 {
+            if !first {
+                write!(f, " ")?;
+            }
+            first = false;
+            if Self::requires_quotes(k) {
+                write!(f, "\"{}\"", k)?;
+            } else {
+                write!(f, "{}", k)?;
+            }
+            write!(f, "=")?;
+            if Self::requires_quotes(v) {
+                write!(f, "\"{}\"", v)?;
+            } else {
+                write!(f, "{}", v)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 pub struct GCodeCommand {
     pub op: GCodeOperation,
     pub comment: Option<String>,
+}
+
+impl Display for GCodeCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.op.fmt(f)?;
+        if let Some(comment) = &self.comment {
+            if !self.op.is_nop() {
+                write!(f, " ;{}", comment)?;
+            } else {
+                write!(f, ";{}", comment)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum GCodeReadError {
+    #[error("IO error")]
+    IO(#[from] io::Error),
+    #[error("invalid gcode")]
+    ParseError(#[from] GCodeParseError),
 }
 
 pub struct GCodeReader<R: BufRead> {
@@ -75,20 +201,27 @@ impl<R: BufRead> GCodeReader<R> {
             buf: String::new(),
         }
     }
+
+    pub fn buffer(&self) -> &str {
+        self.buf.as_str()
+    }
 }
 
 impl<R: BufRead> Iterator for GCodeReader<R> {
-    type Item = io::Result<GCodeCommand>;
+    type Item = Result<GCodeCommand, GCodeReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.buf.clear();
         match self.rdr.read_line(&mut self.buf) {
             Ok(0) => None,
-            Ok(_) => Some(Ok(parser::parse_gcode(&self.buf))),
-            Err(e) => Some(Err(e)),
+            Ok(_) => Some(parse_gcode(&self.buf).map_err(|e| e.into())),
+            Err(e) => Some(Err(GCodeReadError::IO(e))),
         }
     }
 }
+
+pub use parser::parse_gcode;
+pub use parser::GCodeParseError;
 
 mod parser {
     #![allow(clippy::many_single_char_names)]
@@ -106,8 +239,32 @@ mod parser {
     };
     use std::borrow::Cow;
 
-    pub fn parse_gcode(cmd: &str) -> GCodeCommand {
-        parse(cmd.trim()).expect("parse failed").1
+    #[derive(Debug)]
+    pub struct GCodeParseError {
+        position: String,
+    }
+
+    impl std::error::Error for GCodeParseError {}
+
+    impl std::fmt::Display for GCodeParseError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "gcode parse error at: {}", self.position)
+        }
+    }
+
+    pub fn parse_gcode(cmd: &str) -> Result<GCodeCommand, GCodeParseError> {
+        match parse(cmd.trim()) {
+            Ok((_, o)) => Ok(o),
+            Err(Err::Incomplete(_)) => Err(GCodeParseError {
+                position: "".into(),
+            }),
+            Err(Err::Error(e)) => Err(GCodeParseError {
+                position: e.input.into(),
+            }),
+            Err(Err::Failure(e)) => Err(GCodeParseError {
+                position: e.input.into(),
+            }),
+        }
     }
 
     fn parse(s: &str) -> IResult<&str, GCodeCommand> {
@@ -260,7 +417,6 @@ mod parser {
     fn comment(s: &str) -> IResult<&str, &str> {
         let (s, _) = space0(s)?;
         let (s, _) = tag(";")(s)?;
-        let (s, _) = space0(s)?;
         Ok(("", s.trim_end()))
     }
 }
