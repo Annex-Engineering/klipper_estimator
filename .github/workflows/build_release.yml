@@ -53,8 +53,8 @@ jobs:
       - name: Stop sccache server
         run: sccache --stop-server
       - name: Rename asset
-        run: mv target/${{ matrix.target }}/release/${{ matrix.raw_name }} target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+        run: mv target/${{ matrix.target }}/release/${{ matrix.raw_name }} target/${{ matrix.asset_name }}
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+          files: target/${{ matrix.asset_name }}
