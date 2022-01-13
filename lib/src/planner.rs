@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 use std::f64::EPSILON;
 
-use crate::gcode::{GCodeCommand, GCodeExtendedParams, GCodeOperation};
+pub use crate::firmware_retraction::FirmwareRetractionOptions;
+use crate::firmware_retraction::FirmwareRetractionState;
+use crate::gcode::{GCodeCommand, GCodeOperation};
 
 use crate::kind_tracker::{Kind, KindTracker};
 use glam::Vec4Swizzles;
@@ -432,11 +434,11 @@ pub struct OperationSequence {
 }
 
 impl OperationSequence {
-    fn add_dwell(&mut self, duration: f64) {
+    pub(crate) fn add_dwell(&mut self, duration: f64) {
         self.moves.push_back(PlanningOperation::Dwell(duration));
     }
 
-    fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
+    pub(crate) fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
         if move_cmd.distance == 0.0 {
             self.add_fill();
             return;
@@ -447,7 +449,7 @@ impl OperationSequence {
         self.moves.push_back(PlanningOperation::Move(move_cmd));
     }
 
-    fn add_fill(&mut self) {
+    pub(crate) fn add_fill(&mut self) {
         self.moves.push_back(PlanningOperation::Fill);
     }
 
@@ -538,11 +540,11 @@ impl OperationSequence {
         }
     }
 
-    pub fn flush(&mut self) {
+    fn flush(&mut self) {
         self.process(false);
     }
 
-    pub fn next_move(&mut self) -> Option<PlanningOperation> {
+    fn next_move(&mut self) -> Option<PlanningOperation> {
         self.process(true);
         if self.flush_count == 0 {
             return None;
@@ -630,21 +632,6 @@ impl Default for PositionMode {
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero(num: &f64) -> bool {
-    *num < f64::EPSILON
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct FirmwareRetractionOptions {
-    pub retract_length: f64,
-    pub unretract_extra_length: f64,
-    pub unretract_speed: f64,
-    pub retract_speed: f64,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub lift_z: f64,
-}
-
 #[derive(Debug)]
 pub struct ToolheadState {
     pub position: Vec4,
@@ -689,7 +676,7 @@ impl ToolheadState {
         pm
     }
 
-    fn perform_relative_move(
+    pub fn perform_relative_move(
         &mut self,
         axes: [Option<f64>; 4],
         kind: Option<Kind>,
@@ -769,115 +756,6 @@ impl MoveChecker {
         if move_cmd.rate.xy() == glam::DVec2::ZERO || e_rate < 0.0 {
             let inv_extrude_r = 1.0 / e_rate.abs();
             move_cmd.limit_speed(max_velocity * inv_extrude_r, max_accel * inv_extrude_r);
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum FirmwareRetractionState {
-    Unretracted,
-    Retracted {
-        lifted_z: f64,
-        retracted_length: f64,
-    },
-}
-
-impl Default for FirmwareRetractionState {
-    fn default() -> Self {
-        FirmwareRetractionState::Unretracted
-    }
-}
-
-impl FirmwareRetractionState {
-    fn set_options(&self, toolhead_state: &mut ToolheadState, params: &GCodeExtendedParams) {
-        let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
-        if let Some(v) = params.get_number::<f64>("retract_length") {
-            settings.retract_length = v.max(0.0);
-        }
-        if let Some(v) = params.get_number::<f64>("retract_speed") {
-            settings.retract_speed = v.max(0.0);
-        }
-        if let Some(v) = params.get_number::<f64>("unretract_extra_length") {
-            settings.unretract_extra_length = v.max(0.0);
-        }
-        if let Some(v) = params.get_number::<f64>("unretract_speed") {
-            settings.unretract_speed = v.max(0.0);
-        }
-        if let Some(v) = params.get_number::<f64>("lift_z") {
-            settings.lift_z = v.max(0.0);
-        }
-    }
-
-    fn retract(
-        &mut self,
-        kind_tracker: &mut KindTracker,
-        toolhead_state: &mut ToolheadState,
-        move_sequence: &mut OperationSequence,
-    ) {
-        if let FirmwareRetractionState::Unretracted = self {
-            let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
-            let lifted_z = settings.lift_z;
-            let retracted_length = settings.retract_length;
-
-            if retracted_length > 0.0 {
-                move_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, None, Some(retracted_length)],
-                        Some(kind_tracker.get_kind("Firmware retract")),
-                    ),
-                    toolhead_state,
-                );
-            }
-
-            if lifted_z > 0.0 {
-                move_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, Some(lifted_z), None],
-                        Some(kind_tracker.get_kind("Firmware retract Z hop")),
-                    ),
-                    toolhead_state,
-                );
-            }
-
-            *self = FirmwareRetractionState::Retracted {
-                lifted_z,
-                retracted_length,
-            };
-        }
-    }
-
-    fn unretract(
-        &mut self,
-        kind_tracker: &mut KindTracker,
-        toolhead_state: &mut ToolheadState,
-        move_sequence: &mut OperationSequence,
-    ) {
-        if let FirmwareRetractionState::Retracted {
-            lifted_z,
-            retracted_length,
-        } = self
-        {
-            if *retracted_length > 0.0 {
-                move_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, None, Some(-*retracted_length)],
-                        Some(kind_tracker.get_kind("Firmware unretract")),
-                    ),
-                    toolhead_state,
-                );
-            }
-
-            if *lifted_z > 0.0 {
-                move_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, Some(-*lifted_z), None],
-                        Some(kind_tracker.get_kind("Firmware unretract Z hop")),
-                    ),
-                    toolhead_state,
-                );
-            }
-
-            *self = FirmwareRetractionState::Unretracted;
         }
     }
 }
