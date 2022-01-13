@@ -36,6 +36,11 @@ jobs:
       
     steps:
       - uses: actions/checkout@v2
+      - name: Install Pi cross compiler
+        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        run: |
+          sudo apt-get update
+          sudo apt-get install gcc-arm-linux-gnueabihf
       - uses: actions/cache@v2
         with:
           path: |
