@@ -46,6 +46,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install musl-tools
+      - name: Setup MSYS2
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
       - uses: actions/cache@v2
         with:
           path: |
