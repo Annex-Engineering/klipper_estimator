@@ -410,10 +410,14 @@ mod parser {
             tuple((char('"'), take_till(|c| c == '"'), char('"'))),
             |(_, s, _)| Cow::from(s),
         );
+        let quoted_unterminated = map(
+            tuple((char('"'), take_while(|_| true), eof)),
+            |(_, s, _)| Cow::from(s),
+        );
         let unquoted = map(take_till(|c: char| c.is_whitespace() || c == ';'), |s| {
             Cow::from(s)
         });
-        alt((quoted, unquoted))(s)
+        alt((quoted, quoted_unterminated, unquoted))(s)
     }
 
     fn comment(s: &str) -> IResult<&str, &str> {
