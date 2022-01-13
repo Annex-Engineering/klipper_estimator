@@ -121,3 +121,11 @@ $ cargo build --release
 ```
 
 For Linux and Windows binaries are provided in each release.
+
+## Acknowledgements
+
+This project is in no way endorsed by the Klipper project. Please do not direct
+any support requests to the Klipper project.
+
+  * [Klipper](https://www.klipper3d.org/) by [https://www.patreon.com/koconnor](Kevin O'Connor)
+  * [Moonraker](https://github.com/Arksine/moonraker) by Arksine
