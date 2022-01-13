@@ -8,12 +8,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_windows:
+  build:
     runs-on: [self-hosted, linux]
     
     strategy:
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+        include: 
+          - target: x86_64-pc-windows-gnu
+            asset_name: klipper_estimator.exe
+          - target: x86_64-unknown-linux-musl
+            asset_name: klipper_estimator
     
     env:
       RUST_BACKTRACE: full
@@ -48,7 +52,5 @@ jobs:
         run: sccache --stop-server
       - name: Release
         uses: softprops/action-gh-release@v1
-        env:
-          RELEASE_DIR: target/${{ matrix.target }}/release
         with:
-          files: "$RELEASE_DIR/klipper_estimator{,.exe}"
+          files: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
