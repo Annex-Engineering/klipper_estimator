@@ -101,8 +101,9 @@ Currently the following slicers are supported:
   * SuperSlicer
   * ideaMaker
 
-In PrusaSlicer and SuperSlicer `Post-processing scripts` are set under in
-`Output Options` `Print Settings`:
+In PrusaSlicer and SuperSlicer `Post-processing scripts` are set in `Output
+Options` under `Print Settings`:
+
 ![PrusaSlicer and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
 
 ## Building
