@@ -1,7 +1,7 @@
 use std::error::Error;
 
-use klipper_estimator::glam::DVec3;
-use klipper_estimator::planner::{FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits};
+use lib_klipper::glam::DVec3;
+use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits};
 
 use clap::Parser;
 use once_cell::sync::OnceCell;

@@ -3,8 +3,8 @@ use std::f64::EPSILON;
 use std::fs::File;
 use std::io::BufReader;
 
-use klipper_estimator::gcode::GCodeReader;
-use klipper_estimator::glam::{DVec2, Vec4Swizzles};
+use lib_klipper::gcode::GCodeReader;
+use lib_klipper::glam::{DVec2, Vec4Swizzles};
 
 use clap::Parser;
 

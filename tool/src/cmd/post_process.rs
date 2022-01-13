@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use regex::Regex;
 
-use klipper_estimator::gcode::{
+use lib_klipper::gcode::{
     parse_gcode, GCodeCommand, GCodeOperation, GCodeReader, GCodeTraditionalParams,
 };
-use klipper_estimator::planner::{Planner, PlanningOperation};
-use klipper_estimator::slicer::SlicerPreset;
+use lib_klipper::planner::{Planner, PlanningOperation};
+use lib_klipper::slicer::SlicerPreset;
 
 use crate::Opts;
 

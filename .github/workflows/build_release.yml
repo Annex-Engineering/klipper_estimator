@@ -50,6 +50,6 @@ jobs:
         with:
           name: ${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/klipper_estimator_rs
-            target/${{ matrix.target }}/release/klipper_estimator_rs.exe
+            target/${{ matrix.target }}/release/klipper_estimator
+            target/${{ matrix.target }}/release/klipper_estimator.exe
           if-no-files-found: ignore
