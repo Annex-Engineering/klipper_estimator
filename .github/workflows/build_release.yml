@@ -24,7 +24,7 @@ jobs:
             os: macos-11
             raw_name: klipper_estimator
             asset_name: klipper_estimator_osx
-          - target: armv7-unknown-linux-gnueabihf
+          - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
             raw_name: klipper_estimator
             asset_name: klipper_estimator_rpi
@@ -33,11 +33,13 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER: arm-linux-gnueabihf-ld
+      CC_armv7_unknown_linux_musleabihf: arm-linux-gnueabihf-gcc
       
     steps:
       - uses: actions/checkout@v2
       - name: Install Pi cross compiler
-        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        if: matrix.target == 'armv7-unknown-linux-musleabihf'
         run: |
           sudo apt-get update
           sudo apt-get install gcc-arm-linux-gnueabihf
@@ -46,11 +48,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install musl-tools
-      - name: Setup MSYS2
+      - name: Setup mingw cross compiler
         if: matrix.target == 'x86_64-pc-windows-gnu'
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install gcc-mingw-w64-x86-64
       - uses: actions/cache@v2
         with:
           path: |
