@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct Planner {
-    sequences: VecDeque<MoveSequence>,
+    operations: OperationSequence,
     pub toolhead_state: ToolheadState,
     pub kind_tracker: KindTracker,
     pub current_kind: Option<Kind>,
@@ -24,7 +24,7 @@ impl Planner {
             .as_ref()
             .map(|_| FirmwareRetractionState::default());
         Planner {
-            sequences: [MoveSequence::default()].into(),
+            operations: OperationSequence::default(),
             toolhead_state: ToolheadState::from_limits(limits),
             kind_tracker: KindTracker::new(),
             current_kind: None,
@@ -36,15 +36,7 @@ impl Planner {
     /// open move sequence.
     pub fn process_cmd(&mut self, cmd: &GCodeCommand) {
         if let Some(t) = Self::is_dwell(cmd) {
-            if let Some(seq) = self.sequences.back_mut() {
-                if !seq.is_empty() {
-                    seq.flush();
-                    self.sequences.push_back(MoveSequence {
-                        pause_before: t,
-                        ..MoveSequence::default()
-                    });
-                }
-            }
+            self.operations.add_dwell(t);
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
             if let Some(v) = f {
                 self.toolhead_state.set_speed(v / 60.0);
@@ -66,10 +58,9 @@ impl Planner {
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
                 let mut m = self.toolhead_state.perform_move([*x, *y, *z, *e]);
                 m.kind = move_kind;
-                self.sequences
-                    .back_mut()
-                    .unwrap()
-                    .add_move(m, &self.toolhead_state);
+                self.operations.add_move(m, &self.toolhead_state);
+            } else {
+                self.operations.add_fill();
             }
         } else if let GCodeOperation::Traditional {
             letter,
@@ -81,7 +72,7 @@ impl Planner {
                 ('G', 10) => {
                     let kt = &mut self.kind_tracker;
                     let m = &mut self.toolhead_state;
-                    let seq = self.sequences.back_mut().unwrap();
+                    let seq = &mut self.operations;
                     self.firmware_retraction
                         .as_mut()
                         .map(|fr| fr.retract(kt, m, seq));
@@ -89,7 +80,7 @@ impl Planner {
                 ('G', 11) => {
                     let kt = &mut self.kind_tracker;
                     let m = &mut self.toolhead_state;
-                    let seq = self.sequences.back_mut().unwrap();
+                    let seq = &mut self.operations;
                     self.firmware_retraction
                         .as_mut()
                         .map(|fr| fr.unretract(kt, m, seq));
@@ -124,8 +115,9 @@ impl Planner {
                 }
                 _ => {}
             }
-        } else if let GCodeOperation::Extended { cmd, params } = &cmd.op {
-            match cmd.as_str() {
+            self.operations.add_fill();
+        } else if let GCodeOperation::Extended { command, params } = &cmd.op {
+            match command.as_str() {
                 "set_velocity_limit" => {
                     if let Some(v) = params.get_number::<f64>("velocity") {
                         self.toolhead_state.limits.set_max_velocity(v);
@@ -148,6 +140,7 @@ impl Planner {
                 }
                 _ => {}
             }
+            self.operations.add_fill();
         } else if cmd.op.is_nop() && cmd.comment.is_some() {
             let comment = cmd.comment.as_ref().unwrap(); // Same, we checked for is_some
 
@@ -155,14 +148,15 @@ impl Planner {
                 // IdeaMaker only gives us `TYPE:`s
                 self.current_kind = Some(self.kind_tracker.get_kind(comment));
             }
+            self.operations.add_fill();
+        } else {
+            self.operations.add_fill();
         }
     }
 
     /// Performs final processing on the final sequence, if one is active.
     pub fn finalize(&mut self) {
-        if let Some(seq) = self.sequences.back_mut() {
-            seq.flush();
-        }
+        self.operations.flush();
     }
 
     fn is_dwell(cmd: &GCodeCommand) -> Option<f64> {
@@ -182,26 +176,13 @@ impl Planner {
                 code: 109 | 190,
                 ..
             } => Some(0.1),
-            GCodeOperation::Extended { cmd, .. } if cmd == "temperature_wait" => Some(0.1),
+            GCodeOperation::Extended { command: cmd, .. } if cmd == "temperature_wait" => Some(0.1),
             _ => None,
         }
     }
 
     pub fn next_operation(&mut self) -> Option<PlanningOperation> {
-        let fseq = self.sequences.front_mut().unwrap();
-
-        match fseq.next_move() {
-            Some(m) => Some(PlanningOperation::Move(m)),
-            None => {
-                // There's no next move, if this isn't the active sequence then remove it
-                if self.sequences.len() > 1 {
-                    let dwell_time = self.sequences.pop_front().unwrap().pause_before;
-                    Some(PlanningOperation::Dwell(dwell_time))
-                } else {
-                    None
-                }
-            }
-        }
+        self.operations.next_move()
     }
 
     pub fn iter(&mut self) -> PlanningOperationIter {
@@ -217,6 +198,7 @@ impl Planner {
 pub enum PlanningOperation {
     Dwell(f64),
     Move(PlanningMove),
+    Fill,
 }
 
 impl PlanningOperation {
@@ -444,25 +426,36 @@ impl PlanningMove {
 }
 
 #[derive(Debug, Default)]
-pub struct MoveSequence {
-    pause_before: f64,
-    moves: VecDeque<PlanningMove>,
+pub struct OperationSequence {
+    moves: VecDeque<PlanningOperation>,
     flush_count: usize,
 }
 
-impl MoveSequence {
-    fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
-        if move_cmd.distance == 0.0 {
-            return;
-        }
-        if let Some(prev_move) = self.moves.back() {
-            move_cmd.apply_junction(prev_move, toolhead_state);
-        }
-        self.moves.push_back(move_cmd);
+impl OperationSequence {
+    fn add_dwell(&mut self, duration: f64) {
+        self.moves.push_back(PlanningOperation::Dwell(duration));
     }
 
-    fn is_empty(&self) -> bool {
-        self.moves.is_empty()
+    fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
+        if move_cmd.distance == 0.0 {
+            self.add_fill();
+            return;
+        }
+        if let Some(prev_move) = self.last_move() {
+            move_cmd.apply_junction(prev_move, toolhead_state);
+        }
+        self.moves.push_back(PlanningOperation::Move(move_cmd));
+    }
+
+    fn add_fill(&mut self) {
+        self.moves.push_back(PlanningOperation::Fill);
+    }
+
+    fn last_move(&self) -> Option<&PlanningMove> {
+        self.moves.iter().rev().find_map(|o| match o {
+            PlanningOperation::Move(m) => Some(m),
+            _ => None,
+        })
     }
 
     fn process(&mut self, partial: bool) {
@@ -484,48 +477,60 @@ impl MoveSequence {
         }
 
         for (idx, m) in self.moves.iter_mut().enumerate().skip(skip).rev() {
-            let reachable_start_v2 = next_end_v2 + m.max_dv2;
-            let start_v2 = m.max_start_v2.min(reachable_start_v2);
-            let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
-            let smoothed_v2 = m.max_smoothed_v2.min(reachable_smoothed_v2);
-            if smoothed_v2 < reachable_smoothed_v2 {
-                if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty() {
-                    if update_flush_count && peak_cruise_v2 != 0.0 {
+            match m {
+                PlanningOperation::Move(m) => {
+                    let reachable_start_v2 = next_end_v2 + m.max_dv2;
+                    let start_v2 = m.max_start_v2.min(reachable_start_v2);
+                    let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
+                    let smoothed_v2 = m.max_smoothed_v2.min(reachable_smoothed_v2);
+                    if smoothed_v2 < reachable_smoothed_v2 {
+                        if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty()
+                        {
+                            if update_flush_count && peak_cruise_v2 != 0.0 {
+                                self.flush_count = idx;
+                                update_flush_count = false;
+                            }
+
+                            peak_cruise_v2 = m
+                                .max_cruise_v2
+                                .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
+
+                            if !delayed.is_empty() {
+                                if !update_flush_count && idx < self.flush_count {
+                                    let mut mc_v2 = peak_cruise_v2;
+                                    for (m, ms_v2, me_v2) in delayed.iter_mut().rev() {
+                                        mc_v2 = mc_v2.min(*ms_v2);
+                                        m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
+                                    }
+                                }
+                                delayed.clear();
+                            }
+                        }
+
+                        if !update_flush_count && idx < self.flush_count {
+                            let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
+                                .min(m.max_cruise_v2)
+                                .min(peak_cruise_v2);
+                            m.set_junction(
+                                start_v2.min(cruise_v2),
+                                cruise_v2,
+                                next_end_v2.min(cruise_v2),
+                            );
+                        }
+                    } else {
+                        delayed.push((m, start_v2, next_end_v2));
+                    }
+                    next_end_v2 = start_v2;
+                    next_smoothed_v2 = smoothed_v2;
+                }
+                _ => {
+                    // Skip non-moves
+                    if update_flush_count && delayed.is_empty() && self.flush_count == idx - 1 {
                         self.flush_count = idx;
                         update_flush_count = false;
                     }
-
-                    peak_cruise_v2 = m
-                        .max_cruise_v2
-                        .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
-
-                    if !delayed.is_empty() {
-                        if !update_flush_count && idx < self.flush_count {
-                            let mut mc_v2 = peak_cruise_v2;
-                            for (m, ms_v2, me_v2) in delayed.iter_mut().rev() {
-                                mc_v2 = mc_v2.min(*ms_v2);
-                                m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
-                            }
-                        }
-                        delayed.clear();
-                    }
                 }
-
-                if !update_flush_count && idx < self.flush_count {
-                    let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
-                        .min(m.max_cruise_v2)
-                        .min(peak_cruise_v2);
-                    m.set_junction(
-                        start_v2.min(cruise_v2),
-                        cruise_v2,
-                        next_end_v2.min(cruise_v2),
-                    );
-                }
-            } else {
-                delayed.push((m, start_v2, next_end_v2));
             }
-            next_end_v2 = start_v2;
-            next_smoothed_v2 = smoothed_v2;
         }
 
         if update_flush_count {
@@ -537,7 +542,7 @@ impl MoveSequence {
         self.process(false);
     }
 
-    pub fn next_move(&mut self) -> Option<PlanningMove> {
+    pub fn next_move(&mut self) -> Option<PlanningOperation> {
         self.process(true);
         if self.flush_count == 0 {
             return None;
@@ -807,7 +812,7 @@ impl FirmwareRetractionState {
         &mut self,
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
-        move_sequence: &mut MoveSequence,
+        move_sequence: &mut OperationSequence,
     ) {
         if let FirmwareRetractionState::Unretracted = self {
             let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
@@ -845,7 +850,7 @@ impl FirmwareRetractionState {
         &mut self,
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
-        move_sequence: &mut MoveSequence,
+        move_sequence: &mut OperationSequence,
     ) {
         if let FirmwareRetractionState::Retracted {
             lifted_z,

@@ -4,7 +4,7 @@ use std::io::{self, BufRead};
 
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum GCodeOperation {
     Nop,
     Move {
@@ -20,7 +20,7 @@ pub enum GCodeOperation {
         params: GCodeTraditionalParams,
     },
     Extended {
-        cmd: String,
+        command: String,
         params: GCodeExtendedParams,
     },
 }
@@ -66,7 +66,10 @@ impl Display for GCodeOperation {
                 }
                 Ok(())
             }
-            GCodeOperation::Extended { cmd, params } => {
+            GCodeOperation::Extended {
+                command: cmd,
+                params,
+            } => {
                 write!(f, "{}", cmd)?;
                 if params.len() > 0 {
                     write!(f, " ")?;
@@ -78,7 +81,7 @@ impl Display for GCodeOperation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct GCodeTraditionalParams(Vec<(char, String)>);
 
 impl GCodeTraditionalParams {
@@ -115,7 +118,7 @@ impl Display for GCodeTraditionalParams {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct GCodeExtendedParams(BTreeMap<String, String>);
 
 impl GCodeExtendedParams {
@@ -162,7 +165,7 @@ impl Display for GCodeExtendedParams {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct GCodeCommand {
     pub op: GCodeOperation,
     pub comment: Option<String>,
@@ -374,7 +377,7 @@ mod parser {
             s,
             (
                 GCodeOperation::Extended {
-                    cmd: cmd.to_lowercase(),
+                    command: cmd.to_lowercase(),
                     params: GCodeExtendedParams(
                         params
                             .into_iter()
