@@ -15,9 +15,11 @@ jobs:
       matrix:
         include: 
           - target: x86_64-pc-windows-gnu
+            raw_name: klipper_estimator.exe
             asset_name: klipper_estimator.exe
           - target: x86_64-unknown-linux-musl
-            asset_name: klipper_estimator
+            raw_name: klipper_estimator
+            asset_name: klipper_estimator_linux
     
     env:
       RUST_BACKTRACE: full
@@ -50,6 +52,8 @@ jobs:
           args: --target ${{ matrix.target }} --release
       - name: Stop sccache server
         run: sccache --stop-server
+      - name: Rename asset
+        run: mv target/${{ matrix.target }}/release/${{ matrix.raw_name }} target/${{ matrix.target }}/release/${{ matrix.asset_name }}
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
