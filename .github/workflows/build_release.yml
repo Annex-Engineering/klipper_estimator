@@ -9,49 +9,50 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, linux]
-    
     strategy:
       matrix:
         include: 
           - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
             raw_name: klipper_estimator.exe
             asset_name: klipper_estimator.exe
           - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
             raw_name: klipper_estimator
             asset_name: klipper_estimator_linux
-    
+          - target: x86_64-apple-darwin
+            os: macos-11
+            raw_name: klipper_estimator
+            asset_name: klipper_estimator_osx
+          - target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            raw_name: klipper_estimator
+            asset_name: klipper_estimator_rpi
+
+    runs-on: ${{ matrix.os }}
+
     env:
       RUST_BACKTRACE: full
-      RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 1000M
-      SCCACHE_DIR: /home/dalegaard/.cache/sccache
-      SCCACHE_IDLE_TIMEOUT: 0
       
     steps:
       - uses: actions/checkout@v2
       - uses: actions/cache@v2
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           target: ${{ matrix.target }}
           override: true
-      - name: Start sccache server
-        run: sccache --start-server
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --target ${{ matrix.target }} --release
-      - name: Stop sccache server
-        run: sccache --stop-server
       - name: Rename asset
         run: mv target/${{ matrix.target }}/release/${{ matrix.raw_name }} target/${{ matrix.asset_name }}
       - name: Release
