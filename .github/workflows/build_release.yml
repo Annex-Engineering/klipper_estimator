@@ -46,10 +46,7 @@ jobs:
           args: --target ${{ matrix.target }} --release
       - name: Stop sccache server
         run: sccache --stop-server
-      - uses: actions/upload-artifact@v2
+      - name: Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: ${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/klipper_estimator
-            target/${{ matrix.target }}/release/klipper_estimator.exe
-          if-no-files-found: ignore
+          files: target/${{ matrix.target }}/release/klipper_estimator{,.exe}
