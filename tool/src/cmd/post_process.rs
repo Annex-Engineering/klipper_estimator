@@ -407,7 +407,6 @@ impl PostProcessCmd {
 
     pub fn run(&self, opts: &Opts) {
         let state = self.estimate(opts);
-        println!("{:?}", state);
         self.apply_changes(state);
     }
 }
