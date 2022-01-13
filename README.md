@@ -101,6 +101,10 @@ Currently the following slicers are supported:
   * SuperSlicer
   * ideaMaker
 
+In PrusaSlicer and SuperSlicer `Post-processing scripts` are set under in
+`Output Options` `Print Settings`:
+![PrusaSlicer and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
+
 ## Building
 
 `klipper_estimator` is written in Rust. Assuming a Rust toolchain is installed,
