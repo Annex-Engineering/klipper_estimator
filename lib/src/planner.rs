@@ -47,6 +47,7 @@ impl Planner {
             let move_kind = cmd
                 .comment
                 .as_ref()
+                .map(|s| s.trim())
                 .map(|s| {
                     if s.starts_with("move to next layer ") {
                         "move to next layer"
@@ -54,7 +55,7 @@ impl Planner {
                         s.as_ref()
                     }
                 })
-                .map(|s| self.kind_tracker.get_kind(s.trim()))
+                .map(|s| self.kind_tracker.get_kind(s))
                 .or(self.current_kind);
 
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
@@ -204,6 +205,10 @@ pub enum PlanningOperation {
 }
 
 impl PlanningOperation {
+    pub fn is_fill(&self) -> bool {
+        matches!(self, Self::Fill)
+    }
+
     pub fn is_move(&self) -> bool {
         matches!(self, Self::Move(_))
     }

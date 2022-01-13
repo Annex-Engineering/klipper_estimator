@@ -66,7 +66,7 @@ impl EstimateCmd {
         let mut layer_times = BTreeMap::new();
         let mut kind_times = BTreeMap::new();
 
-        let ops: Vec<_> = planner.iter().collect();
+        let ops: Vec<_> = planner.iter().filter(|op| !op.is_fill()).collect();
         let cross_section = std::f64::consts::PI * (1.75f64 / 2.0).powf(2.0);
         let mut move_idx = 0;
         for (i, moves) in ops.split(|o| !o.is_move()).enumerate() {

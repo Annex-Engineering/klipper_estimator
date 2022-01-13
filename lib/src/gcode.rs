@@ -233,7 +233,7 @@ mod parser {
     use nom::{
         branch::alt,
         bytes::complete::{tag, tag_no_case, take_till, take_until, take_while},
-        character::complete::{satisfy, space0, space1},
+        character::complete::{char, satisfy, space0, space1},
         combinator::{complete, eof, map, opt, recognize},
         error::{Error, ErrorKind, ParseError},
         multi::separated_list0,
@@ -405,16 +405,15 @@ mod parser {
     }
 
     fn maybe_quoted_string(s: &str) -> IResult<&str, Cow<str>> {
-        match take_till(|c: char| c.is_whitespace() || c == '"' || c == ';')(s)? {
-            (s, v)
-                if s.chars()
-                    .next()
-                    .map_or(true, |c| c.is_whitespace() || c == ';') =>
-            {
-                Ok((s, Cow::from(v)))
-            }
-            _ => todo!(),
-        }
+        // Implement shlex non-posix like argument parsing, as used in Klipper
+        let quoted = map(
+            tuple((char('"'), take_till(|c| c == '"'), char('"'))),
+            |(_, s, _)| Cow::from(s),
+        );
+        let unquoted = map(take_till(|c: char| c.is_whitespace() || c == ';'), |s| {
+            Cow::from(s)
+        });
+        alt((quoted, unquoted))(s)
     }
 
     fn comment(s: &str) -> IResult<&str, &str> {
