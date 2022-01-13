@@ -11,6 +11,7 @@ use klipper_estimator::gcode::{
     parse_gcode, GCodeCommand, GCodeOperation, GCodeReader, GCodeTraditionalParams,
 };
 use klipper_estimator::planner::{Planner, PlanningOperation};
+use klipper_estimator::slicer::SlicerPreset;
 
 use crate::Opts;
 
@@ -234,52 +235,11 @@ impl GCodeInterceptor for IdeaMakerGCodeInterceptor {
     }
 }
 
-#[derive(Debug, Clone)]
-enum SlicerPreset {
-    PrusaSlicer { version: String },
-    SuperSlicer { version: String },
-    IdeaMaker { version: String },
-}
-
-impl SlicerPreset {
-    fn determine(comment: &str) -> Option<SlicerPreset> {
-        None.or_else(|| Self::try_slic3r(comment))
-            .or_else(|| Self::try_ideamaker(comment))
-    }
-
-    fn try_slic3r(comment: &str) -> Option<SlicerPreset> {
-        lazy_static! {
-            static ref RE_PRUSA: Regex = Regex::new(r"PrusaSlicer\s(.*)\son").unwrap();
-            static ref RE_SUPER: Regex = Regex::new(r"SuperSlicer\s(.*)\son").unwrap();
-        }
-        if let Some(m) = RE_PRUSA.captures(comment) {
-            Some(SlicerPreset::PrusaSlicer {
-                version: m.get(1).unwrap().as_str().into(),
-            })
-        } else if let Some(m) = RE_SUPER.captures(comment) {
-            Some(SlicerPreset::SuperSlicer {
-                version: m.get(1).unwrap().as_str().into(),
-            })
-        } else {
-            None
-        }
-    }
-
-    fn try_ideamaker(comment: &str) -> Option<SlicerPreset> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"Sliced by ideaMaker\s(.*),").unwrap();
-        }
-        RE.captures(comment).map(|c| SlicerPreset::IdeaMaker {
-            version: c.get(1).unwrap().as_str().into(),
-        })
-    }
-
-    fn metadata_processor(&self) -> Box<dyn GCodeInterceptor> {
-        match self {
-            SlicerPreset::PrusaSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
-            SlicerPreset::SuperSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
-            SlicerPreset::IdeaMaker { .. } => Box::new(IdeaMakerGCodeInterceptor::default()),
-        }
+fn metadata_processor(preset: &SlicerPreset) -> Box<dyn GCodeInterceptor> {
+    match preset {
+        SlicerPreset::PrusaSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
+        SlicerPreset::SuperSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
+        SlicerPreset::IdeaMaker { .. } => Box::new(IdeaMakerGCodeInterceptor::default()),
     }
 }
 
@@ -327,7 +287,7 @@ impl EstimateRunner {
             if cmd.op.is_nop() && cmd.comment.is_some() && self.state.result.slicer.is_none() {
                 self.state.result.slicer = SlicerPreset::determine(cmd.comment.as_ref().unwrap());
                 if let Some(preset) = self.state.result.slicer.as_ref() {
-                    self.state.gcode_interceptor = preset.metadata_processor();
+                    self.state.gcode_interceptor = metadata_processor(preset);
                 }
             }
 

@@ -11,3 +11,5 @@ lexical-core = "^0.7"
 serde = { version = "^1", features = ["derive"] }
 glam = { version = "0.20", features = ["serde"] }
 thiserror = "1"
+regex = "1"
+lazy_static = "1"

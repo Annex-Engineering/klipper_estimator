@@ -446,8 +446,10 @@ name = "klipper_estimator"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "lazy_static",
  "lexical-core",
  "nom",
+ "regex",
  "serde",
  "thiserror",
 ]
