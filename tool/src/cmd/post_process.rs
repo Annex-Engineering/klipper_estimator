@@ -22,12 +22,6 @@ pub struct PostProcessCmd {
 }
 
 trait GCodeInterceptor: std::fmt::Debug {
-    fn need_sync(&self, command: &GCodeCommand, result: &PostProcessEstimationResult) -> bool {
-        let _ = command;
-        let _ = result;
-        false
-    }
-
     fn post_command(&mut self, command: &GCodeCommand, result: &mut PostProcessEstimationResult) {
         let _ = command;
         let _ = result;
@@ -55,17 +49,6 @@ struct M73GcodeInterceptor {
 }
 
 impl GCodeInterceptor for M73GcodeInterceptor {
-    fn need_sync(&self, command: &GCodeCommand, _result: &PostProcessEstimationResult) -> bool {
-        matches!(
-            command.op,
-            GCodeOperation::Traditional {
-                letter: 'M',
-                code: 73,
-                ..
-            }
-        )
-    }
-
     fn post_command(&mut self, command: &GCodeCommand, result: &mut PostProcessEstimationResult) {
         if matches!(
             command.op,
@@ -148,10 +131,6 @@ impl PSSSGCodeInterceptor {
 }
 
 impl GCodeInterceptor for PSSSGCodeInterceptor {
-    fn need_sync(&self, command: &GCodeCommand, result: &PostProcessEstimationResult) -> bool {
-        self.m73_interceptor.need_sync(command, result)
-    }
-
     fn post_command(&mut self, command: &GCodeCommand, result: &mut PostProcessEstimationResult) {
         self.m73_interceptor.post_command(command, result);
     }
@@ -294,10 +273,7 @@ impl EstimateRunner {
             self.planner.process_cmd(&cmd);
             self.buffer.push_back(cmd);
 
-            // let flush = state.gcode_interceptor.need_sync(&cmd, &state.result);
-            let flush = false;
-
-            if flush || n % 1000 == 0 {
+            if n % 1000 == 0 {
                 self.flush();
             }
         }
