@@ -276,8 +276,7 @@ mod parser {
         let (s, _line_no) = opt(line_number)(s)?;
 
         let (s, (op, comment)) = alt((
-            complete(traditional_gcode)
-                .map(|(letter, code, params, c)| (map_traditional(letter, code, params), c)),
+            complete(traditional_gcode),
             complete(extended_gcode),
             // Just a comment
             complete(map(comment, |c| (GCodeOperation::Nop, Some(c)))),
@@ -308,8 +307,7 @@ mod parser {
         Ok((s, v))
     }
 
-    type RawTraditionalGcode<'a> = (char, u16, Vec<(char, &'a str)>, Option<&'a str>);
-    fn traditional_gcode(s: &str) -> IResult<&str, RawTraditionalGcode> {
+    fn traditional_gcode(s: &str) -> IResult<&str, (GCodeOperation, Option<&str>)> {
         let (s, letter) = satisfy(|c| c.is_alphabetic())(s)?;
         let (s, code) = match lexical_core::parse_partial::<u16>(s.as_bytes()) {
             Ok((_, 0)) => return Err(Err::Error(Error::from_error_kind(s, ErrorKind::Digit))),
@@ -319,7 +317,7 @@ mod parser {
         let (s, _) = skip_space(s)?;
         let (s, params) = separated_list0(space1, traditional_param)(s)?;
         let (s, comment) = opt(comment)(s)?;
-        Ok((s, (letter.to_ascii_uppercase(), code, params, comment)))
+        Ok((s, (map_traditional(letter, code, params), comment)))
     }
 
     fn traditional_param(s: &str) -> IResult<&str, (char, &str)> {
