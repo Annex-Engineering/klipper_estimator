@@ -127,5 +127,5 @@ For Linux and Windows binaries are provided in each release.
 This project is in no way endorsed by the Klipper project. Please do not direct
 any support requests to the Klipper project.
 
-  * [Klipper](https://www.klipper3d.org/) by [https://www.patreon.com/koconnor](Kevin O'Connor)
+  * [Klipper](https://www.klipper3d.org/) by [Kevin O'Connor](https://www.patreon.com/koconnor)
   * [Moonraker](https://github.com/Arksine/moonraker) by Arksine
