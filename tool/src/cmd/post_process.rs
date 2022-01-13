@@ -340,6 +340,8 @@ impl PostProcessCmd {
             }
         }
 
+        // Flush output file before renaming
+        wr.flush().expect("IO error");
         std::fs::rename(&dst_path, &self.filename).expect("rename failed");
     }
 
