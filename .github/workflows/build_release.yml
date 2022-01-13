@@ -48,5 +48,7 @@ jobs:
         run: sccache --stop-server
       - name: Release
         uses: softprops/action-gh-release@v1
+        env:
+          RELEASE_DIR: target/${{ matrix.target }}/release
         with:
-          files: target/${{ matrix.target }}/release/klipper_estimator{,.exe}
+          files: "$RELEASE_DIR/klipper_estimator{,.exe}"

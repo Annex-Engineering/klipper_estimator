@@ -8,8 +8,8 @@ the Klipper firmware. Currently it provides two modes:
     the gcode output file with corrected time estimates.
 
 The estimation is done using an implementation of Klippers kinematics, but may
-in some cases be slightly off due to rounding modes. If the timing is far off,
-this is considered a bug. 
+in some cases be slightly off due to rounding modes. If the timing is far
+off(e.g. more than a minute over a >12 hour print), this is considered a bug. 
 
 Note that currently delta kinematic limits are _not_ implemented.
 
@@ -79,9 +79,11 @@ Sequences:
    38m13.706s           => WALL-OUTER
 ```
 
-These calculations are done without regard for prime lines, printer heat up,
-etc. and therefore is the "minimal time" the print could take assuming
-everything else took no time.
+The calculations are done based only on the commands found in the file, with no
+regards for macro expansions. This means that `print_start` type macros will
+count as zero seconds, as well heat up times, homing, etc. Therefore the time
+output should be considered a "minimal time", assuming these extra factors take
+no time.
 
 ### `post-process` mode
 
