@@ -255,6 +255,7 @@ impl std::default::Default for PostProcessState {
 struct EstimateRunner {
     state: PostProcessState,
     planner: Planner,
+    // We use this buffer to synchronize planned moves with input moves
     buffer: VecDeque<GCodeCommand>,
 }
 
@@ -263,6 +264,7 @@ impl EstimateRunner {
         for (n, cmd) in rdr.enumerate() {
             let cmd = cmd.expect("gcode read");
 
+            // If we don't have a slicer figured out yet, and this is a comment, try
             if cmd.op.is_nop() && cmd.comment.is_some() && self.state.result.slicer.is_none() {
                 self.state.result.slicer = SlicerPreset::determine(cmd.comment.as_ref().unwrap());
                 if let Some(preset) = self.state.result.slicer.as_ref() {
