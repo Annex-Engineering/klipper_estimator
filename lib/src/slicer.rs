@@ -5,12 +5,14 @@ pub enum SlicerPreset {
     PrusaSlicer { version: String },
     SuperSlicer { version: String },
     IdeaMaker { version: String },
+    Cura { version: String },
 }
 
 impl SlicerPreset {
     pub fn determine(comment: &str) -> Option<SlicerPreset> {
         None.or_else(|| Self::try_slic3r(comment))
             .or_else(|| Self::try_ideamaker(comment))
+            .or_else(|| Self::try_cura(comment))
     }
 
     fn try_slic3r(comment: &str) -> Option<SlicerPreset> {
@@ -36,6 +38,15 @@ impl SlicerPreset {
             static ref RE: Regex = Regex::new(r"Sliced by ideaMaker\s(.*),").unwrap();
         }
         RE.captures(comment).map(|c| SlicerPreset::IdeaMaker {
+            version: c.get(1).unwrap().as_str().into(),
+        })
+    }
+
+    fn try_cura(comment: &str) -> Option<SlicerPreset> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"Generated with Cura_SteamEngine\s(.*)").unwrap();
+        }
+        RE.captures(comment).map(|c| SlicerPreset::Cura {
             version: c.get(1).unwrap().as_str().into(),
         })
     }

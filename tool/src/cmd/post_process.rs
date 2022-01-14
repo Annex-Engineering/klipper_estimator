@@ -214,11 +214,50 @@ impl GCodeInterceptor for IdeaMakerGCodeInterceptor {
     }
 }
 
+#[derive(Debug, Default)]
+struct CuraGCodeInterceptor {
+    time_buffer: VecDeque<f64>,
+}
+
+impl GCodeInterceptor for CuraGCodeInterceptor {
+    fn post_command(&mut self, command: &GCodeCommand, result: &mut PostProcessEstimationResult) {
+        if let Some(com) = &command.comment {
+            if com.starts_with("TIME_ELAPSED:") {
+                self.time_buffer.push_back(result.total_time);
+            }
+        }
+    }
+
+    fn output_process(
+        &mut self,
+        command: &GCodeCommand,
+        result: &PostProcessEstimationResult,
+    ) -> Option<GCodeCommand> {
+        if let Some(com) = &command.comment {
+            if com.starts_with("TIME:") {
+                return Some(GCodeCommand {
+                    op: GCodeOperation::Nop,
+                    comment: Some(format!("TIME:{:.0}", result.total_time.ceil())),
+                });
+            } else if com.starts_with("TIME_ELAPSED:") {
+                if let Some(next) = self.time_buffer.pop_front() {
+                    return Some(GCodeCommand {
+                        op: GCodeOperation::Nop,
+                        comment: Some(format!("TIME_ELAPSED:{:.0}", (next).ceil())),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
 fn metadata_processor(preset: &SlicerPreset) -> Box<dyn GCodeInterceptor> {
     match preset {
         SlicerPreset::PrusaSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
         SlicerPreset::SuperSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
         SlicerPreset::IdeaMaker { .. } => Box::new(IdeaMakerGCodeInterceptor::default()),
+        SlicerPreset::Cura { .. } => Box::new(CuraGCodeInterceptor::default()),
     }
 }
 
