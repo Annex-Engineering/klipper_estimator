@@ -193,6 +193,7 @@ fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), 
 #[derive(Parser, Debug)]
 enum SubCommand {
     Estimate(cmd::estimate::EstimateCmd),
+    DumpMoves(cmd::estimate::DumpMovesCmd),
     PostProcess(cmd::post_process::PostProcessCmd),
     DumpConfig(cmd::dump_config::DumpConfigCmd),
 }
@@ -201,6 +202,7 @@ impl SubCommand {
     fn run(&self, opts: &Opts) {
         match self {
             Self::Estimate(i) => i.run(opts),
+            Self::DumpMoves(i) => i.run(opts),
             Self::PostProcess(i) => i.run(opts),
             Self::DumpConfig(i) => i.run(opts),
         }

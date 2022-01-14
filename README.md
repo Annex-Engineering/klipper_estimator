@@ -6,6 +6,7 @@ the Klipper firmware. Currently it provides two modes:
   * `estimate` mode outputs detailed statistics about a print job
   * `post-process` mode can be used as a Slicer post-processing script, updating
     the gcode output file with corrected time estimates.
+  * `dump-moves` mode dumps planning data for every move in a file
 
 The estimation is done using an implementation of Klippers kinematics, but may
 in some cases be slightly off due to rounding modes. If the timing is far
@@ -48,9 +49,7 @@ $ ./klipper_estimator --config_file config.json estimate ...
 ### `estimate` mode
 
 Estimation mode is useful for determining statistics about a print, in order to
-optimize print times. It gives a high level summary, and can optionally also
-give a detailed output of every single move when using the `--dump_moves`
-option.
+optimize print times. It gives a high level summary.
 
 Basic usage:
 ```
@@ -107,6 +106,11 @@ In PrusaSlicer and SuperSlicer `Post-processing scripts` are set in `Output
 Options` under `Print Settings`:
 
 ![PrusaSlicer and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
+
+### `dump-moves` mode
+
+The `dump-moves` mode is used like `estimate` mode, but instead of providing a
+summary, move planning data is dumped for every move.
 
 ## Building
 

@@ -532,7 +532,7 @@ impl OperationSequence {
                 }
                 _ => {
                     // Skip non-moves
-                    if update_flush_count && delayed.is_empty() && self.flush_count == idx - 1 {
+                    if update_flush_count && delayed.is_empty() && self.flush_count + 1 == idx {
                         self.flush_count = idx;
                         update_flush_count = false;
                     }
