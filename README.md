@@ -1,7 +1,7 @@
 # Klipper print time estimator
 
 `klipper_estimator` is a tool for determining the time a print will take using
-the Klipper firmware. Currently it provides two modes:
+the Klipper firmware. Currently it provides the following modes:
 
   * `estimate` mode outputs detailed statistics about a print job
   * `post-process` mode can be used as a Slicer post-processing script, updating
