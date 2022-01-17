@@ -238,9 +238,9 @@ impl EstimateCmd {
 
                         let num_columns =
                             ((available_width - column) / (column + spacing.len()) + 1).max(1);
-                        let num_chunks = layer_times.len() / num_columns
+                        let chunk_size = layer_times.len() / num_columns
                             + usize::from(layer_times.len() % num_columns != 0);
-                        let columnized = layer_times.chunks(num_chunks).collect::<Vec<_>>();
+                        let columnized = layer_times.chunks(chunk_size).collect::<Vec<_>>();
                         for line in 0.. {
                             if columnized
                                 .iter()
@@ -254,7 +254,9 @@ impl EstimateCmd {
 
                             print!("{offset}");
                             for i in 0..num_columns {
-                                if let Some((t, l)) = columnized[i].get(line) {
+                                if let Some((t, l)) =
+                                    columnized.get(i).and_then(|col| col.get(line))
+                                {
                                     if i > 0 {
                                         print!("{spacing}");
                                     }
