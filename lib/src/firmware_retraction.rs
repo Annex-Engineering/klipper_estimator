@@ -58,7 +58,8 @@ impl FirmwareRetractionState {
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
         move_sequence: &mut OperationSequence,
-    ) {
+    ) -> usize {
+        let mut n = 0;
         if let FirmwareRetractionState::Unretracted = self {
             let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
             let lifted_z = settings.lift_z;
@@ -72,6 +73,7 @@ impl FirmwareRetractionState {
                     ),
                     toolhead_state,
                 );
+                n += 1;
             }
 
             if lifted_z > 0.0 {
@@ -82,6 +84,7 @@ impl FirmwareRetractionState {
                     ),
                     toolhead_state,
                 );
+                n += 1;
             }
 
             *self = FirmwareRetractionState::Retracted {
@@ -89,6 +92,7 @@ impl FirmwareRetractionState {
                 retracted_length,
             };
         }
+        n
     }
 
     pub fn unretract(
@@ -96,7 +100,8 @@ impl FirmwareRetractionState {
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
         move_sequence: &mut OperationSequence,
-    ) {
+    ) -> usize {
+        let mut n = 0;
         if let FirmwareRetractionState::Retracted {
             lifted_z,
             retracted_length,
@@ -110,6 +115,7 @@ impl FirmwareRetractionState {
                     ),
                     toolhead_state,
                 );
+                n += 1;
             }
 
             if *lifted_z > 0.0 {
@@ -120,9 +126,11 @@ impl FirmwareRetractionState {
                     ),
                     toolhead_state,
                 );
+                n += 1;
             }
 
             *self = FirmwareRetractionState::Unretracted;
         }
+        n
     }
 }

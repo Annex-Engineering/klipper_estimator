@@ -270,7 +270,7 @@ struct PostProcessEstimationResult {
 impl std::default::Default for PostProcessEstimationResult {
     fn default() -> Self {
         PostProcessEstimationResult {
-            total_time: 0.25,
+            total_time: 0.0,
             slicer: None,
         }
     }
@@ -291,11 +291,12 @@ impl std::default::Default for PostProcessState {
     }
 }
 
+#[derive(Debug)]
 struct EstimateRunner {
     state: PostProcessState,
     planner: Planner,
     // We use this buffer to synchronize planned moves with input moves
-    buffer: VecDeque<GCodeCommand>,
+    buffer: VecDeque<(usize, GCodeCommand)>,
 }
 
 impl EstimateRunner {
@@ -311,8 +312,8 @@ impl EstimateRunner {
                 }
             }
 
-            self.planner.process_cmd(&cmd);
-            self.buffer.push_back(cmd);
+            let x = self.planner.process_cmd(&cmd);
+            self.buffer.push_back((x, cmd));
 
             if n % 1000 == 0 {
                 self.flush();
@@ -325,7 +326,7 @@ impl EstimateRunner {
 
     fn flush(&mut self) {
         for c in self.planner.iter() {
-            let cmd = self.buffer.pop_front().unwrap();
+            let (n, cmd) = self.buffer.front_mut().unwrap();
             match c {
                 PlanningOperation::Dwell(t) => self.state.result.total_time += t,
                 PlanningOperation::Move(m) => self.state.result.total_time += m.total_time(),
@@ -334,6 +335,11 @@ impl EstimateRunner {
             self.state
                 .gcode_interceptor
                 .post_command(&cmd, &mut self.state.result);
+            if *n <= 1 {
+                let _ = self.buffer.pop_front();
+            } else {
+                *n -= 1;
+            }
         }
     }
 }

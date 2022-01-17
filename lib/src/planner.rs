@@ -36,7 +36,8 @@ impl Planner {
 
     /// Processes a gcode command through the planning engine and appends it to the currently
     /// open move sequence.
-    pub fn process_cmd(&mut self, cmd: &GCodeCommand) {
+    /// Returns the number of planning operations the command resulted in
+    pub fn process_cmd(&mut self, cmd: &GCodeCommand) -> usize {
         if let Some(t) = Self::is_dwell(cmd) {
             self.operations.add_dwell(t);
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
@@ -76,17 +77,17 @@ impl Planner {
                     let kt = &mut self.kind_tracker;
                     let m = &mut self.toolhead_state;
                     let seq = &mut self.operations;
-                    self.firmware_retraction
-                        .as_mut()
-                        .map(|fr| fr.retract(kt, m, seq));
+                    if let Some(fr) = self.firmware_retraction.as_mut() {
+                        return fr.retract(kt, m, seq);
+                    }
                 }
                 ('G', 11) => {
                     let kt = &mut self.kind_tracker;
                     let m = &mut self.toolhead_state;
                     let seq = &mut self.operations;
-                    self.firmware_retraction
-                        .as_mut()
-                        .map(|fr| fr.unretract(kt, m, seq));
+                    if let Some(fr) = self.firmware_retraction.as_mut() {
+                        return fr.unretract(kt, m, seq);
+                    }
                 }
                 ('G', 92) => {
                     if let Some(v) = params.get_number::<f64>('X') {
@@ -155,6 +156,7 @@ impl Planner {
         } else {
             self.operations.add_fill();
         }
+        1 // Most commands result in a single planning op
     }
 
     /// Performs final processing on the final sequence, if one is active.
