@@ -23,7 +23,8 @@ Basic usage info can be found by running `klipper_estimator` with no arguments.
 In order to provide accurate times, `klipper_estimator` needs printer settings
 including maximum velocity, acceleration, etc. It can take these either from a
 config file(`--config_file` option) or grab them directly from Moonraker(using
-the `--config_moonraker_url` option).
+the `--config_moonraker_url` option). Note that the Klipper configuration files
+cannot be used directly.
 
 To experiment with settings, one can use the `dump-config` command together with
 `--config_moonraker_url` to generate a config file based on the current printer
@@ -32,10 +33,7 @@ commands.
 
 To dump a config, use e.g.:
 ```
-$ ./klipper_estimator --config_moonraker_url http://192.168.0.21 dump-config
-{
-  ...
-}
+$ ./klipper_estimator --config_moonraker_url http://192.168.0.21 dump-config > config.json
 ```
 
 The config file format is Hjson and thus allows normal JSON with some
@@ -101,6 +99,7 @@ Currently the following slicers are supported:
   * PrusaSlicer
   * SuperSlicer
   * ideaMaker
+  * Cura
 
 In PrusaSlicer and SuperSlicer `Post-processing scripts` are set in `Output
 Options` under `Print Settings`:
@@ -114,8 +113,9 @@ summary, move planning data is dumped for every move.
 
 ## Building
 
-`klipper_estimator` is written in Rust. Assuming a Rust toolchain is installed,
-along with git, one can build `klipper_estimator` by running:
+`klipper_estimator` is written in Rust. Version 1.58 or newer is required to
+compile the tool. Assuming a Rust toolchain is installed, along with git, one
+can build `klipper_estimator` by running:
 
 ```
 $ git clone https://github.com/dalegaard/klipper_estimator.git
@@ -124,7 +124,8 @@ $ cargo build --release
 // Resulting binary will be at `target/release/klipper_estimator`(.exe on Windows)
 ```
 
-For Linux and Windows binaries are provided in each release.
+Binaries are provided for Windows, Linux, Mac OS X, and Raspberry Pi targets.
+These can be found under the `Releases` section.
 
 ## Acknowledgements
 
