@@ -64,6 +64,9 @@ struct EstimationSequence {
     total_extrude_distance: f64,
     num_moves: usize,
     total_z_time: f64,
+    total_output_time: f64,
+    total_travel_time: f64,
+    total_extrude_only_time: f64,
     phase_times: EstimationPhaseTimes,
     kind_times: BTreeMap<String, f64>,
     #[serde(serialize_with = "serialize_layer_times")]
@@ -124,6 +127,13 @@ impl EstimationState {
         seq.total_distance += m.distance;
         seq.total_extrude_distance += m.end.w - m.start.w;
         seq.num_moves += 1;
+
+        match (m.is_extrude_move(), m.is_kinematic_move()) {
+            (true, true) => seq.total_output_time += m.total_time(),
+            (true, false) => seq.total_extrude_only_time += m.total_time(),
+            (false, true) => seq.total_travel_time += m.total_time(),
+            _ => {}
+        }
 
         {
             let pt = &mut seq.phase_times;
@@ -186,37 +196,66 @@ impl EstimateCmd {
                         println!("");
                     }
                     println!(" Run {}:", i);
-                    println!("  Total moves: {}", seq.num_moves);
-                    println!("  Total distance: {:.3}mm", seq.total_distance);
+                    println!("  Total moves:                 {}", seq.num_moves);
+                    println!("  Total distance:              {:.3}mm", seq.total_distance);
                     println!(
-                        "  Total extrude distance: {:.3}mm",
+                        "  Total extrude distance:      {:.3}mm",
                         seq.total_extrude_distance
                     );
                     println!(
-                        "  Minimal time: {} ({:.3}s)",
+                        "  Minimal time:                {} ({:.3}s)",
                         format_time(seq.total_time),
                         seq.total_time
                     );
                     println!(
-                        "  Average flow: {} mm³/s",
+                        "  Total print move time:       {} ({:.3}s)",
+                        format_time(seq.total_output_time),
+                        seq.total_output_time
+                    );
+                    println!(
+                        "  Total extrude-only time:     {} ({:.3}s)",
+                        format_time(seq.total_extrude_only_time),
+                        seq.total_extrude_only_time
+                    );
+                    println!(
+                        "  Total travel time:           {} ({:.3}s)",
+                        format_time(seq.total_travel_time),
+                        seq.total_travel_time
+                    );
+                    println!(
+                        "  Average flow:                {:.3} mm³/s",
                         seq.total_extrude_distance * cross_section / seq.total_time
+                    );
+                    println!(
+                        "  Average flow (output only):  {:.3} mm³/s",
+                        seq.total_extrude_distance * cross_section / seq.total_output_time
                     );
                     println!("  Phases:");
                     println!(
-                        "   Acceleration: {}",
+                        "   Acceleration:               {}",
                         format_time(seq.phase_times.acceleration)
                     );
-                    println!("   Cruise:       {}", format_time(seq.phase_times.cruise));
                     println!(
-                        "   Deceleration: {}",
+                        "   Cruise:                     {}",
+                        format_time(seq.phase_times.cruise)
+                    );
+                    println!(
+                        "   Deceleration:               {}",
                         format_time(seq.phase_times.deceleration)
                     );
 
-                    println!("  Move kind distribution:");
                     let mut kind_times = seq.kind_times.iter().collect::<Vec<_>>();
-                    kind_times.sort_by_key(|(_, t)| NotNan::new(**t).unwrap());
-                    for (k, t) in kind_times.iter().rev() {
-                        println!("   {:20} => {}", format_time(**t), k);
+                    if !kind_times.is_empty() {
+                        println!("  Move kind distribution:");
+                        kind_times.sort_by_key(|(_, t)| NotNan::new(**t).unwrap());
+                        let kind_length = kind_times
+                            .iter()
+                            .map(|(_, t)| format_time(**t).len())
+                            .max()
+                            .unwrap_or(0);
+                        for (k, t) in kind_times.iter().rev() {
+                            println!("   {:kind_length$}     {}", format_time(**t), k);
+                        }
                     }
 
                     let layer_times = seq
