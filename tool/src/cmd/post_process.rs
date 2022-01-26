@@ -239,6 +239,11 @@ impl GCodeInterceptor for CuraGCodeInterceptor {
                     op: GCodeOperation::Nop,
                     comment: Some(format!("TIME:{:.0}", result.total_time.ceil())),
                 });
+            } else if com.starts_with("PRINT.TIME:") {
+                return Some(GCodeCommand {
+                    op: GCodeOperation::Nop,
+                    comment: Some(format!("PRINT.TIME:{:.0}", result.total_time.ceil())),
+                });
             } else if com.starts_with("TIME_ELAPSED:") {
                 if let Some(next) = self.time_buffer.pop_front() {
                     return Some(GCodeCommand {
@@ -384,6 +389,18 @@ impl PostProcessCmd {
                 write!(wr, "{}\n", line).expect("IO error");
             }
         }
+
+        write!(
+            wr,
+            "; Processed by klipper_estimator {}, {}",
+            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"),
+            if let Some(slicer) = state.result.slicer {
+                format!("detected slicer {}", slicer)
+            } else {
+                "no slicer detected".into()
+            }
+        )
+        .expect("IO error");
 
         // Flush output file before renaming
         wr.flush().expect("IO error");
