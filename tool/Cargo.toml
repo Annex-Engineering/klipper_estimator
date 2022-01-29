@@ -11,6 +11,7 @@ license = "MIT"
 clap = { version = "3", features = ["derive"] }
 lib_klipper = { path = "../lib" }
 reqwest = { version = "^0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+url = "2"
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 deser-hjson = "^1"
@@ -19,6 +20,7 @@ regex = "1"
 lazy_static = "1"
 ordered-float = { version = "2", features = ["serde"] }
 term_size = "0.3"
+thiserror = "1"
 
 [build-dependencies]
 vergen = "^5"

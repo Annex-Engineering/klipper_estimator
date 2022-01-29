@@ -6,6 +6,8 @@ use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, Prin
 use clap::Parser;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
+use thiserror::Error;
+use url::Url;
 #[macro_use]
 extern crate lazy_static;
 
@@ -37,7 +39,7 @@ impl Opts {
                     self.config.get().unwrap()
                 }
                 Err(e) => {
-                    eprintln!("Failed to load printer configuration: {:?}", e);
+                    eprintln!("Failed to load printer configuration: {}", e);
                     std::process::exit(1);
                 }
             },
@@ -71,9 +73,28 @@ impl Opts {
     }
 }
 
-fn moonraker_config(source_url: &str, target: &mut PrinterLimits) -> Result<(), Box<dyn Error>> {
-    let mut url = source_url.to_string();
-    url.push_str("/printer/objects/query?configfile=settings");
+#[derive(Error, Debug)]
+pub enum MoonrakerConfigError {
+    #[error("given URL cannot be a base URL")]
+    URLCannotBeBase,
+    #[error("invalid URL: {}", .0)]
+    URLParseError(#[from] url::ParseError),
+    #[error("request failed: {}", .0)]
+    RequestError(#[from] reqwest::Error),
+}
+
+fn moonraker_config(
+    source_url: &str,
+    target: &mut PrinterLimits,
+) -> Result<(), MoonrakerConfigError> {
+    let mut url = Url::parse(source_url)?;
+    url.query_pairs_mut().append_pair("configfile", "settings");
+    {
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|_| MoonrakerConfigError::URLCannotBeBase)?;
+        path.extend(&["printer", "objects", "query"]);
+    }
 
     #[derive(Debug, Deserialize)]
     struct MoonrakerResultRoot {

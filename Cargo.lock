@@ -454,6 +454,8 @@ dependencies = [
  "serde",
  "serde_json",
  "term_size",
+ "thiserror",
+ "url",
  "vergen",
 ]
 
