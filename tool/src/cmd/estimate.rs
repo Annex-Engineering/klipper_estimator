@@ -122,6 +122,9 @@ impl EstimationState {
 
     fn add_move(&mut self, planner: &Planner, m: &PlanningMove) {
         let seq = self.get_cur_seq();
+        if seq.total_time == 0.0 && seq.num_moves == 0 {
+            seq.total_time += 0.25;
+        }
 
         seq.total_time += m.total_time();
         seq.total_distance += m.distance;
@@ -406,7 +409,7 @@ impl DumpMovesCmd {
         let mut planner = opts.make_planner();
         let mut state = DumpMovesState {
             move_idx: 0,
-            ctime: 0.1,
+            ctime: 0.25,
             ztime: 0.0,
         };
 
