@@ -62,6 +62,7 @@ struct EstimationSequence {
     total_time: f64,
     total_distance: f64,
     total_extrude_distance: f64,
+    max_flow: Option<f64>,
     num_moves: usize,
     total_z_time: f64,
     total_output_time: f64,
@@ -132,7 +133,12 @@ impl EstimationState {
         seq.num_moves += 1;
 
         match (m.is_extrude_move(), m.is_kinematic_move()) {
-            (true, true) => seq.total_output_time += m.total_time(),
+            (true, true) => {
+                seq.total_output_time += m.total_time();
+                if let Some(flow_rate) = m.flow_rate(1.75 / 2.0) {
+                    seq.max_flow = Some(seq.max_flow.unwrap_or(0.0).max(flow_rate));
+                }
+            }
             (true, false) => seq.total_extrude_only_time += m.total_time(),
             (false, true) => seq.total_travel_time += m.total_time(),
             _ => {}
@@ -228,6 +234,14 @@ impl EstimateCmd {
                     println!(
                         "  Average flow:                {:.3} mm³/s",
                         seq.total_extrude_distance * cross_section / seq.total_time
+                    );
+                    println!(
+                        "  Maximum flow:                {}",
+                        if let Some(max_flow) = seq.max_flow {
+                            format!("{:.3} mm³/s", max_flow)
+                        } else {
+                            format!("-")
+                        }
                     );
                     println!(
                         "  Average flow (output only):  {:.3} mm³/s",
