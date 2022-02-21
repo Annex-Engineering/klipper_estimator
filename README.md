@@ -104,6 +104,11 @@ Currently the following slicers are supported:
 In PrusaSlicer and SuperSlicer `Post-processing scripts` are set in `Output
 Options` under `Print Settings`:
 
+Note that ideaMaker does not have support for post-processing scripts, and thus
+cannot automatically run `klipper_estimator` on export.
+
+For Cura, use the script in `compat/CuraPostProcessing/`.
+
 ![PrusaSlicer and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
 
 ### `dump-moves` mode
