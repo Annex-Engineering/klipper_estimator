@@ -23,5 +23,5 @@ term_size = "0.3"
 thiserror = "1"
 
 [build-dependencies]
-vergen = "^5"
+git2 = "^0"
 anyhow = "^1"

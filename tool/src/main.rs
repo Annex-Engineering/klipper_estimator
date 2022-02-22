@@ -14,7 +14,7 @@ extern crate lazy_static;
 mod cmd;
 
 #[derive(Parser, Debug)]
-#[clap(version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"), author = "Lasse Dalegaard <dalegaard@gmail.com>")]
+#[clap(version = env!("TOOL_VERSION"), author = "Lasse Dalegaard <dalegaard@gmail.com>")]
 pub struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,

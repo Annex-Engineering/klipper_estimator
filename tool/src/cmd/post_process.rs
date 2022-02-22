@@ -393,7 +393,7 @@ impl PostProcessCmd {
         write!(
             wr,
             "; Processed by klipper_estimator {}, {}",
-            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"),
+            env!("TOOL_VERSION"),
             if let Some(slicer) = state.result.slicer {
                 format!("detected slicer {}", slicer)
             } else {
