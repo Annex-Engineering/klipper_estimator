@@ -132,6 +132,10 @@ $ cargo build --release
 Binaries are provided for Windows, Linux, Mac OS X, and Raspberry Pi targets.
 These can be found under the `Releases` section.
 
+For Arch Linux, an AUR package
+[`klipper_estimator`](https://aur.archlinux.org/packages/klipper-estimator) is
+available, courtesy of Wilhelm Schuster. Thanks!
+
 ## Acknowledgements
 
 This project is in no way endorsed by the Klipper project. Please do not direct
