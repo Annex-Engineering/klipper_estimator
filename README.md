@@ -116,6 +116,46 @@ For Cura, use the script in `compat/CuraPostProcessing/`.
 The `dump-moves` mode is used like `estimate` mode, but instead of providing a
 summary, move planning data is dumped for every move.
 
+### Accurately estimating `PRINT_START`/`PRINT_END` macros
+
+Klipper macros can perform arbitrarily complex operations. `klipper_estimator`
+has no hope of estimating how long these will take, as the Jinja templates can
+access any state of the read printer. However it is often the case that the
+amount of print time actually spent within the macro is constant. A prime
+example of this is print start macros. The macro may execute homing and heating
+commands, but the print timer does not start until the first material is
+extruded. This generally happens when the prime line is started.
+
+This gives rise to an offset in print time that we cannot estimate, but the user
+can easily measure it after a print is over.
+
+To compensate for this, `klipper_estimator` understands the following gcode
+comment(generally syntax followed by some examples):
+
+```
+; ESTIMATOR_ADD_TIME <duration> [description]
+; E.g.:
+; ESTIMATOR_ADD_TIME 21
+; ESTIMATOR_ADD_TIME 21 Print start
+```
+
+When `klipper_estimator` encounters a comment with this format, it will add the
+requested duration to the total print time. The time will also be tracked as a
+"move kind", if the description field is given.
+
+Note that only the upper-case string `ESTIMATOR_ADD_TIME`, on a separate comment
+line, will trigger this behaviour. Any whitespace between the `;` and `E`
+characters will however be ignored.
+
+The intended usage of this functionality is for print start macros, when
+executed by the slicer. E.g. in PrusaSlicer or SuperSlicer, one might set their
+print start gcode like this:
+
+```
+; ESTIMATOR_ADD_TIME 20 Prime line
+print_start extruder=[first_layer_temperature] bed=[first_layer_bed_temperature]
+```
+
 ## Building
 
 `klipper_estimator` is written in Rust. Version 1.58 or newer is required to

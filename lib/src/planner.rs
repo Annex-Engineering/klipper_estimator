@@ -39,7 +39,8 @@ impl Planner {
     /// Returns the number of planning operations the command resulted in
     pub fn process_cmd(&mut self, cmd: &GCodeCommand) -> usize {
         if let Some(t) = Self::is_dwell(cmd) {
-            self.operations.add_dwell(t);
+            self.operations
+                .add_dwell(t, Some(self.kind_tracker.get_kind("Dwell")));
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
             if let Some(v) = f {
                 self.toolhead_state.set_speed(v / 60.0);
@@ -151,8 +152,17 @@ impl Planner {
             if let Some(comment) = comment.strip_prefix("TYPE:") {
                 // IdeaMaker only gives us `TYPE:`s
                 self.current_kind = Some(self.kind_tracker.get_kind(comment));
+                self.operations.add_fill();
+            } else if let Some(cmd) = comment.trim_start().strip_prefix("ESTIMATOR_ADD_TIME ") {
+                if let Some((duration, kind)) = Self::parse_buffer_cmd(&mut self.kind_tracker, cmd)
+                {
+                    self.operations.add_dwell(duration, kind);
+                } else {
+                    self.operations.add_fill();
+                }
+            } else {
+                self.operations.add_fill();
             }
-            self.operations.add_fill();
         } else {
             self.operations.add_fill();
         }
@@ -186,6 +196,15 @@ impl Planner {
         }
     }
 
+    fn parse_buffer_cmd(kind_tracker: &mut KindTracker, cmd: &str) -> Option<(f64, Option<Kind>)> {
+        let (a, b) = cmd
+            .split_once(" ")
+            .map_or((cmd, None), |(l, r)| (l, Some(r)));
+        let duration = a.parse().ok()?;
+        let kind = b.map(|s| kind_tracker.get_kind(s));
+        Some((duration, kind))
+    }
+
     pub fn next_operation(&mut self) -> Option<PlanningOperation> {
         self.operations.next_move()
     }
@@ -194,14 +213,18 @@ impl Planner {
         PlanningOperationIter { planner: self }
     }
 
-    pub fn move_kind<'a>(&'a self, m: &PlanningMove) -> Option<&'a str> {
+    pub fn move_kind_str<'a>(&'a self, m: &PlanningMove) -> Option<&'a str> {
         m.kind.map(|k| self.kind_tracker.resolve_kind(k))
+    }
+
+    pub fn kind_str<'a>(&'a self, kind: &Option<Kind>) -> Option<&'a str> {
+        kind.map(|k| self.kind_tracker.resolve_kind(k))
     }
 }
 
 #[derive(Debug)]
 pub enum PlanningOperation {
-    Dwell(f64),
+    Dwell(f64, Option<Kind>),
     Move(PlanningMove),
     Fill,
 }
@@ -441,8 +464,9 @@ pub struct OperationSequence {
 }
 
 impl OperationSequence {
-    pub(crate) fn add_dwell(&mut self, duration: f64) {
-        self.moves.push_back(PlanningOperation::Dwell(duration));
+    pub(crate) fn add_dwell(&mut self, duration: f64, kind: Option<Kind>) {
+        self.moves
+            .push_back(PlanningOperation::Dwell(duration, kind));
     }
 
     pub(crate) fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {

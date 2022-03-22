@@ -98,7 +98,7 @@ impl EstimationState {
     fn add(&mut self, planner: &Planner, op: &PlanningOperation) {
         match op {
             PlanningOperation::Move(m) => self.add_move(planner, m),
-            PlanningOperation::Dwell(t) => {
+            PlanningOperation::Dwell(t, k) => {
                 // If current sequence has moves or there is no sequence, make a new one
                 if self
                     .sequences
@@ -108,7 +108,14 @@ impl EstimationState {
                 {
                     self.sequences.push(EstimationSequence::default());
                 }
-                self.sequences.last_mut().unwrap().total_time += t;
+                let seq = self.sequences.last_mut().unwrap();
+                seq.total_time += t;
+                let kind = planner.kind_str(k).unwrap_or("Other");
+                if let Some(kt) = seq.kind_times.get_mut(kind) {
+                    *kt += t;
+                } else {
+                    seq.kind_times.insert(kind.to_string(), *t);
+                }
             }
             _ => {}
         }
@@ -123,7 +130,7 @@ impl EstimationState {
 
     fn add_move(&mut self, planner: &Planner, m: &PlanningMove) {
         let seq = self.get_cur_seq();
-        if seq.total_time == 0.0 && seq.num_moves == 0 {
+        if seq.num_moves == 0 {
             seq.total_time += 0.25;
         }
 
@@ -151,7 +158,7 @@ impl EstimationState {
             pt.deceleration += m.decel_time();
         }
 
-        let kind = planner.move_kind(m).unwrap_or("Other");
+        let kind = planner.move_kind_str(m).unwrap_or("Other");
         if let Some(t) = seq.kind_times.get_mut(kind) {
             *t += m.total_time();
         } else {
@@ -378,7 +385,7 @@ impl DumpMovesState {
             println!("    Axes {}", (m.rate * 1000.0).round() / 1000.0);
             println!("    Line width: {:?}", m.line_width(1.75 / 2.0, 0.25),);
             println!("    Flow rate: {:?}", m.flow_rate(1.75 / 2.0));
-            println!("    Kind: {}", planner.move_kind(&m).unwrap_or("Other"));
+            println!("    Kind: {}", planner.move_kind_str(&m).unwrap_or("Other"));
             println!("    Acceleration {:.4}", m.acceleration);
             println!("    Max dv2: {:.4}", m.max_dv2);
             println!("    Max start_v2: {:.4}", m.max_start_v2);
