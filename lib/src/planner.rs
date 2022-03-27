@@ -192,6 +192,11 @@ impl Planner {
                 ..
             } => Some(0.1),
             GCodeOperation::Extended { command: cmd, .. } if cmd == "temperature_wait" => Some(0.1),
+            GCodeOperation::Traditional {
+                letter: 'M',
+                code: 600,
+                ..
+            } => Some(0.0),
             _ => None,
         }
     }
