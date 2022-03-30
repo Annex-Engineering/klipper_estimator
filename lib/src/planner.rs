@@ -38,9 +38,8 @@ impl Planner {
     /// open move sequence.
     /// Returns the number of planning operations the command resulted in
     pub fn process_cmd(&mut self, cmd: &GCodeCommand) -> usize {
-        if let Some(t) = Self::is_dwell(cmd) {
-            self.operations
-                .add_dwell(t, Some(self.kind_tracker.get_kind("Dwell")));
+        if let Some(m) = Self::is_dwell(cmd, &mut self.kind_tracker) {
+            self.operations.moves.push_back(m);
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
             if let Some(v) = f {
                 self.toolhead_state.set_speed(v / 60.0);
@@ -174,29 +173,42 @@ impl Planner {
         self.operations.flush();
     }
 
-    fn is_dwell(cmd: &GCodeCommand) -> Option<f64> {
+    fn is_dwell(cmd: &GCodeCommand, kind_tracker: &mut KindTracker) -> Option<PlanningOperation> {
         match &cmd.op {
             GCodeOperation::Traditional {
                 letter: 'G',
                 code: 4,
                 params,
-            } => Some(params.get_number('P').map_or(0.25, |v: f64| v / 1000.0)),
+            } => Some(PlanningOperation::Delay(
+                params.get_number('P').map_or(0.25, |v: f64| v / 1000.0),
+            )),
             GCodeOperation::Traditional {
                 letter: 'G',
                 code: 28,
                 ..
-            } => Some(0.1),
+            } => Some(PlanningOperation::Dwell(
+                0.1,
+                Some(kind_tracker.get_kind("Indeterminate time")),
+            )),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 109 | 190,
                 ..
-            } => Some(0.1),
-            GCodeOperation::Extended { command: cmd, .. } if cmd == "temperature_wait" => Some(0.1),
+            } => Some(PlanningOperation::Dwell(
+                0.1,
+                Some(kind_tracker.get_kind("Indeterminate time")),
+            )),
+            GCodeOperation::Extended { command: cmd, .. } if cmd == "temperature_wait" => Some(
+                PlanningOperation::Dwell(0.1, Some(kind_tracker.get_kind("Indeterminate time"))),
+            ),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 600,
                 ..
-            } => Some(0.0),
+            } => Some(PlanningOperation::Dwell(
+                0.1,
+                Some(kind_tracker.get_kind("Indeterminate time")),
+            )),
             _ => None,
         }
     }
@@ -230,6 +242,7 @@ impl Planner {
 #[derive(Debug)]
 pub enum PlanningOperation {
     Dwell(f64, Option<Kind>),
+    Delay(f64),
     Move(PlanningMove),
     Fill,
 }

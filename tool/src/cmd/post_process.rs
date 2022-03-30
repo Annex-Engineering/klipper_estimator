@@ -334,6 +334,7 @@ impl EstimateRunner {
             let (n, cmd) = self.buffer.front_mut().unwrap();
             match c {
                 PlanningOperation::Dwell(t, _) => self.state.result.total_time += t,
+                PlanningOperation::Delay(t) => self.state.result.total_time += t,
                 PlanningOperation::Move(m) => self.state.result.total_time += m.total_time(),
                 PlanningOperation::Fill => {}
             }

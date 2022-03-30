@@ -98,6 +98,16 @@ impl EstimationState {
     fn add(&mut self, planner: &Planner, op: &PlanningOperation) {
         match op {
             PlanningOperation::Move(m) => self.add_move(planner, m),
+            PlanningOperation::Delay(t) => {
+                let seq = self.get_cur_seq();
+                seq.total_time += t;
+                let kind = "Dwell";
+                if let Some(kt) = seq.kind_times.get_mut(kind) {
+                    *kt += t;
+                } else {
+                    seq.kind_times.insert(kind.to_string(), *t);
+                }
+            }
             PlanningOperation::Dwell(t, k) => {
                 // If current sequence has moves or there is no sequence, make a new one
                 if self
