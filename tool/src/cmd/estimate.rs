@@ -5,7 +5,7 @@ use std::io::BufReader;
 
 use lib_klipper::gcode::GCodeReader;
 use lib_klipper::glam::{DVec2, Vec4Swizzles};
-use lib_klipper::planner::{Planner, PlanningMove, PlanningOperation};
+use lib_klipper::planner::{Delay, Planner, PlanningMove, PlanningOperation};
 
 use clap::Parser;
 use ordered_float::NotNan;
@@ -98,17 +98,18 @@ impl EstimationState {
     fn add(&mut self, planner: &Planner, op: &PlanningOperation) {
         match op {
             PlanningOperation::Move(m) => self.add_move(planner, m),
-            PlanningOperation::Delay(t) => {
+            PlanningOperation::Delay(Delay::Pause(t)) => {
+                let t = t.as_secs_f64();
                 let seq = self.get_cur_seq();
                 seq.total_time += t;
                 let kind = "Dwell";
                 if let Some(kt) = seq.kind_times.get_mut(kind) {
                     *kt += t;
                 } else {
-                    seq.kind_times.insert(kind.to_string(), *t);
+                    seq.kind_times.insert(kind.to_string(), t);
                 }
             }
-            PlanningOperation::Dwell(t, k) => {
+            PlanningOperation::Delay(Delay::Indeterminate(t, k)) => {
                 // If current sequence has moves or there is no sequence, make a new one
                 if self
                     .sequences
@@ -119,12 +120,13 @@ impl EstimationState {
                     self.sequences.push(EstimationSequence::default());
                 }
                 let seq = self.sequences.last_mut().unwrap();
+                let t = t.as_secs_f64();
                 seq.total_time += t;
                 let kind = planner.kind_str(k).unwrap_or("Other");
                 if let Some(kt) = seq.kind_times.get_mut(kind) {
                     *kt += t;
                 } else {
-                    seq.kind_times.insert(kind.to_string(), *t);
+                    seq.kind_times.insert(kind.to_string(), t);
                 }
             }
             _ => {}

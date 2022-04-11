@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::f64::EPSILON;
+use std::time::Duration;
 
 pub use crate::firmware_retraction::FirmwareRetractionOptions;
 use crate::firmware_retraction::FirmwareRetractionState;
@@ -39,7 +40,7 @@ impl Planner {
     /// Returns the number of planning operations the command resulted in
     pub fn process_cmd(&mut self, cmd: &GCodeCommand) -> usize {
         if let Some(m) = Self::is_dwell(cmd, &mut self.kind_tracker) {
-            self.operations.moves.push_back(m);
+            self.operations.add_delay(m);
         } else if let GCodeOperation::Move { x, y, z, e, f } = &cmd.op {
             if let Some(v) = f {
                 self.toolhead_state.set_speed(v / 60.0);
@@ -155,7 +156,10 @@ impl Planner {
             } else if let Some(cmd) = comment.trim_start().strip_prefix("ESTIMATOR_ADD_TIME ") {
                 if let Some((duration, kind)) = Self::parse_buffer_cmd(&mut self.kind_tracker, cmd)
                 {
-                    self.operations.add_dwell(duration, kind);
+                    self.operations.add_delay(Delay::Indeterminate(
+                        Duration::from_secs_f64(duration),
+                        kind,
+                    ));
                 } else {
                     self.operations.add_fill();
                 }
@@ -173,40 +177,41 @@ impl Planner {
         self.operations.flush();
     }
 
-    fn is_dwell(cmd: &GCodeCommand, kind_tracker: &mut KindTracker) -> Option<PlanningOperation> {
+    fn is_dwell(cmd: &GCodeCommand, kind_tracker: &mut KindTracker) -> Option<Delay> {
+        let indef = Duration::from_secs_f64(0.1);
         match &cmd.op {
             GCodeOperation::Traditional {
                 letter: 'G',
                 code: 4,
                 params,
-            } => Some(PlanningOperation::Delay(
+            } => Some(Delay::Pause(Duration::from_secs_f64(
                 params.get_number('P').map_or(0.25, |v: f64| v / 1000.0),
-            )),
+            ))),
             GCodeOperation::Traditional {
                 letter: 'G',
                 code: 28,
                 ..
-            } => Some(PlanningOperation::Dwell(
-                0.1,
+            } => Some(Delay::Indeterminate(
+                indef,
                 Some(kind_tracker.get_kind("Indeterminate time")),
             )),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 109 | 190,
                 ..
-            } => Some(PlanningOperation::Dwell(
-                0.1,
+            } => Some(Delay::Indeterminate(
+                indef,
                 Some(kind_tracker.get_kind("Indeterminate time")),
             )),
             GCodeOperation::Extended { command: cmd, .. } if cmd == "temperature_wait" => Some(
-                PlanningOperation::Dwell(0.1, Some(kind_tracker.get_kind("Indeterminate time"))),
+                Delay::Indeterminate(indef, Some(kind_tracker.get_kind("Indeterminate time"))),
             ),
             GCodeOperation::Traditional {
                 letter: 'M',
                 code: 600,
                 ..
-            } => Some(PlanningOperation::Dwell(
-                0.1,
+            } => Some(Delay::Indeterminate(
+                indef,
                 Some(kind_tracker.get_kind("Indeterminate time")),
             )),
             _ => None,
@@ -223,7 +228,7 @@ impl Planner {
     }
 
     pub fn next_operation(&mut self) -> Option<PlanningOperation> {
-        self.operations.next_move()
+        self.operations.next_operation()
     }
 
     pub fn iter(&mut self) -> PlanningOperationIter {
@@ -240,9 +245,23 @@ impl Planner {
 }
 
 #[derive(Debug)]
+pub enum Delay {
+    Indeterminate(Duration, Option<Kind>),
+    Pause(Duration),
+}
+
+impl Delay {
+    pub fn duration(&self) -> Duration {
+        match self {
+            Delay::Indeterminate(d, _) => *d,
+            Delay::Pause(d) => *d,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum PlanningOperation {
-    Dwell(f64, Option<Kind>),
-    Delay(f64),
+    Delay(Delay),
     Move(PlanningMove),
     Fill,
 }
@@ -475,16 +494,105 @@ impl PlanningMove {
     }
 }
 
+#[derive(Debug)]
+enum OperationSequenceOperation {
+    Delay(Delay),
+    MoveSequence(MoveSequence),
+    Fill,
+}
+
+impl Into<PlanningOperation> for OperationSequenceOperation {
+    fn into(self) -> PlanningOperation {
+        match self {
+            OperationSequenceOperation::Delay(d) => PlanningOperation::Delay(d),
+            OperationSequenceOperation::Fill => PlanningOperation::Fill,
+            OperationSequenceOperation::MoveSequence(_) => {
+                panic!("Invalid conversion of move sequence to planning op")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct OperationSequence {
-    moves: VecDeque<PlanningOperation>,
-    flush_count: usize,
+    ops: VecDeque<OperationSequenceOperation>,
 }
 
 impl OperationSequence {
-    pub(crate) fn add_dwell(&mut self, duration: f64, kind: Option<Kind>) {
-        self.moves
-            .push_back(PlanningOperation::Dwell(duration, kind));
+    pub(crate) fn add_delay(&mut self, delay: Delay) {
+        self.ops.push_back(OperationSequenceOperation::Delay(delay));
+    }
+
+    pub(crate) fn add_move(&mut self, move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
+        if let Some(OperationSequenceOperation::MoveSequence(ms)) = self.ops.back_mut() {
+            ms.add_move(move_cmd, toolhead_state);
+        } else {
+            let mut ms = MoveSequence::default();
+            ms.add_move(move_cmd, toolhead_state);
+            self.ops
+                .push_back(OperationSequenceOperation::MoveSequence(ms));
+        }
+    }
+
+    pub(crate) fn add_fill(&mut self) {
+        if let Some(OperationSequenceOperation::MoveSequence(ms)) = self.ops.back_mut() {
+            ms.add_fill();
+        } else {
+            self.ops.push_back(OperationSequenceOperation::Fill);
+        }
+    }
+
+    pub(crate) fn flush(&mut self) {
+        for o in self.ops.iter_mut() {
+            if let OperationSequenceOperation::MoveSequence(ms) = o {
+                ms.flush();
+            }
+        }
+    }
+
+    fn next_operation(&mut self) -> Option<PlanningOperation> {
+        if let Some(OperationSequenceOperation::MoveSequence(ms)) = self.ops.front_mut() {
+            let m = ms.next_move();
+            if ms.is_empty() {
+                self.ops.pop_front();
+            }
+            m
+        } else {
+            self.ops.pop_front().map(|o| o.into())
+        }
+    }
+}
+
+#[derive(Debug)]
+enum MoveSequenceOperation {
+    Move(PlanningMove),
+    Fill,
+}
+
+impl MoveSequenceOperation {
+    fn is_fill(&self) -> bool {
+        matches!(self, MoveSequenceOperation::Fill)
+    }
+}
+
+impl Into<PlanningOperation> for MoveSequenceOperation {
+    fn into(self) -> PlanningOperation {
+        match self {
+            MoveSequenceOperation::Move(m) => PlanningOperation::Move(m),
+            MoveSequenceOperation::Fill => PlanningOperation::Fill,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MoveSequence {
+    moves: VecDeque<MoveSequenceOperation>,
+    flush_count: usize,
+}
+
+impl MoveSequence {
+    pub(crate) fn add_fill(&mut self) {
+        self.moves.push_back(MoveSequenceOperation::Fill);
     }
 
     pub(crate) fn add_move(&mut self, mut move_cmd: PlanningMove, toolhead_state: &ToolheadState) {
@@ -495,16 +603,16 @@ impl OperationSequence {
         if let Some(prev_move) = self.last_move() {
             move_cmd.apply_junction(prev_move, toolhead_state);
         }
-        self.moves.push_back(PlanningOperation::Move(move_cmd));
+        self.moves.push_back(MoveSequenceOperation::Move(move_cmd));
     }
 
-    pub(crate) fn add_fill(&mut self) {
-        self.moves.push_back(PlanningOperation::Fill);
+    fn is_empty(&self) -> bool {
+        self.moves.is_empty()
     }
 
     fn last_move(&self) -> Option<&PlanningMove> {
         self.moves.iter().rev().find_map(|o| match o {
-            PlanningOperation::Move(m) => Some(m),
+            MoveSequenceOperation::Move(m) => Some(m),
             _ => None,
         })
     }
@@ -528,64 +636,59 @@ impl OperationSequence {
         }
 
         for (idx, m) in self.moves.iter_mut().enumerate().skip(skip).rev() {
-            match m {
-                PlanningOperation::Move(m) => {
-                    let reachable_start_v2 = next_end_v2 + m.max_dv2;
-                    let start_v2 = m.max_start_v2.min(reachable_start_v2);
-                    let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
-                    let smoothed_v2 = m.max_smoothed_v2.min(reachable_smoothed_v2);
-                    if smoothed_v2 < reachable_smoothed_v2 {
-                        if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty()
-                        {
-                            if update_flush_count && peak_cruise_v2 != 0.0 {
-                                self.flush_count = idx;
-                                update_flush_count = false;
-                            }
+            if let MoveSequenceOperation::Move(m) = m {
+                let reachable_start_v2 = next_end_v2 + m.max_dv2;
+                let start_v2 = m.max_start_v2.min(reachable_start_v2);
+                let reachable_smoothed_v2 = next_smoothed_v2 + m.smoothed_dv2;
+                let smoothed_v2 = m.max_smoothed_v2.min(reachable_smoothed_v2);
+                if smoothed_v2 < reachable_smoothed_v2 {
+                    if (smoothed_v2 + m.smoothed_dv2 > next_smoothed_v2) || !delayed.is_empty() {
+                        if update_flush_count && peak_cruise_v2 != 0.0 {
+                            self.flush_count = idx;
+                            update_flush_count = false;
+                        }
 
-                            peak_cruise_v2 = m
-                                .max_cruise_v2
-                                .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
+                        peak_cruise_v2 = m
+                            .max_cruise_v2
+                            .min((smoothed_v2 + reachable_smoothed_v2) * 0.5);
 
-                            if !delayed.is_empty() {
-                                if !update_flush_count && idx < self.flush_count {
-                                    let mut mc_v2 = peak_cruise_v2;
-                                    for (m, ms_v2, me_v2) in delayed.iter_mut().rev() {
-                                        mc_v2 = mc_v2.min(*ms_v2);
-                                        m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
-                                    }
+                        if !delayed.is_empty() {
+                            if !update_flush_count && idx < self.flush_count {
+                                let mut mc_v2 = peak_cruise_v2;
+                                for (m, ms_v2, me_v2) in delayed.iter_mut().rev() {
+                                    mc_v2 = mc_v2.min(*ms_v2);
+                                    m.set_junction(ms_v2.min(mc_v2), mc_v2, me_v2.min(mc_v2));
                                 }
-                                delayed.clear();
                             }
+                            delayed.clear();
                         }
+                    }
 
-                        if !update_flush_count && idx < self.flush_count {
-                            let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
-                                .min(m.max_cruise_v2)
-                                .min(peak_cruise_v2);
-                            m.set_junction(
-                                start_v2.min(cruise_v2),
-                                cruise_v2,
-                                next_end_v2.min(cruise_v2),
-                            );
-                        }
-                    } else {
-                        delayed.push((m, start_v2, next_end_v2));
+                    if !update_flush_count && idx < self.flush_count {
+                        let cruise_v2 = ((start_v2 + reachable_start_v2) * 0.5)
+                            .min(m.max_cruise_v2)
+                            .min(peak_cruise_v2);
+                        m.set_junction(
+                            start_v2.min(cruise_v2),
+                            cruise_v2,
+                            next_end_v2.min(cruise_v2),
+                        );
                     }
-                    next_end_v2 = start_v2;
-                    next_smoothed_v2 = smoothed_v2;
+                } else {
+                    delayed.push((m, start_v2, next_end_v2));
                 }
-                _ => {
-                    // Skip non-moves
-                    if update_flush_count && delayed.is_empty() && self.flush_count + 1 == idx {
-                        self.flush_count = idx;
-                        update_flush_count = false;
-                    }
-                }
+                next_end_v2 = start_v2;
+                next_smoothed_v2 = smoothed_v2;
             }
         }
 
         if update_flush_count {
             self.flush_count = 0;
+        }
+
+        // Advance while the next operation is a fill
+        while self.flush_count < self.moves.len() && self.moves[self.flush_count].is_fill() {
+            self.flush_count += 1;
         }
     }
 
@@ -600,9 +703,9 @@ impl OperationSequence {
         }
         match self.moves.pop_front() {
             None => None,
-            v @ Some(_) => {
+            Some(v) => {
                 self.flush_count -= 1;
-                v
+                Some(v.into())
             }
         }
     }

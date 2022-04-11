@@ -57,7 +57,7 @@ impl FirmwareRetractionState {
         &mut self,
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
-        move_sequence: &mut OperationSequence,
+        op_sequence: &mut OperationSequence,
     ) -> usize {
         let mut n = 0;
         if let FirmwareRetractionState::Unretracted = self {
@@ -66,7 +66,7 @@ impl FirmwareRetractionState {
             let retracted_length = settings.retract_length;
 
             if retracted_length > 0.0 {
-                move_sequence.add_move(
+                op_sequence.add_move(
                     toolhead_state.perform_relative_move(
                         [None, None, None, Some(retracted_length)],
                         Some(kind_tracker.get_kind("Firmware retract")),
@@ -77,7 +77,7 @@ impl FirmwareRetractionState {
             }
 
             if lifted_z > 0.0 {
-                move_sequence.add_move(
+                op_sequence.add_move(
                     toolhead_state.perform_relative_move(
                         [None, None, Some(lifted_z), None],
                         Some(kind_tracker.get_kind("Firmware retract Z hop")),
@@ -99,7 +99,7 @@ impl FirmwareRetractionState {
         &mut self,
         kind_tracker: &mut KindTracker,
         toolhead_state: &mut ToolheadState,
-        move_sequence: &mut OperationSequence,
+        op_sequence: &mut OperationSequence,
     ) -> usize {
         let mut n = 0;
         if let FirmwareRetractionState::Retracted {
@@ -108,7 +108,7 @@ impl FirmwareRetractionState {
         } = self
         {
             if *retracted_length > 0.0 {
-                move_sequence.add_move(
+                op_sequence.add_move(
                     toolhead_state.perform_relative_move(
                         [None, None, None, Some(-*retracted_length)],
                         Some(kind_tracker.get_kind("Firmware unretract")),
@@ -119,7 +119,7 @@ impl FirmwareRetractionState {
             }
 
             if *lifted_z > 0.0 {
-                move_sequence.add_move(
+                op_sequence.add_move(
                     toolhead_state.perform_relative_move(
                         [None, None, Some(-*lifted_z), None],
                         Some(kind_tracker.get_kind("Firmware unretract Z hop")),
