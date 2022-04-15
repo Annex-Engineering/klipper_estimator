@@ -171,6 +171,9 @@ impl EstimationState {
         }
 
         let kind = planner.move_kind_str(m).unwrap_or("Other");
+        if kind == "skirt" {
+            println!("SKIRT {:?}", m);
+        }
         if let Some(t) = seq.kind_times.get_mut(kind) {
             *t += m.total_time();
         } else {
@@ -283,7 +286,9 @@ impl EstimateCmd {
                     let mut kind_times = seq.kind_times.iter().collect::<Vec<_>>();
                     if !kind_times.is_empty() {
                         println!("  Move kind distribution:");
-                        kind_times.sort_by_key(|(_, t)| NotNan::new(**t).unwrap());
+                        kind_times.sort_by_key(|(_, t)| {
+                            NotNan::new(**t).unwrap_or(NotNan::new(0.0).unwrap())
+                        });
                         let kind_length = kind_times
                             .iter()
                             .map(|(_, t)| format_time(**t).len())

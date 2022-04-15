@@ -849,6 +849,9 @@ impl ToolheadState {
     }
 
     pub fn set_speed(&mut self, v: f64) {
+        if v <= 0.0 {
+            panic!("Requested toolhead velocity {} <= 0", v);
+        }
         self.velocity = v
     }
 
