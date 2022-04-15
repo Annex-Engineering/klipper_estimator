@@ -171,9 +171,6 @@ impl EstimationState {
         }
 
         let kind = planner.move_kind_str(m).unwrap_or("Other");
-        if kind == "skirt" {
-            println!("SKIRT {:?}", m);
-        }
         if let Some(t) = seq.kind_times.get_mut(kind) {
             *t += m.total_time();
         } else {
