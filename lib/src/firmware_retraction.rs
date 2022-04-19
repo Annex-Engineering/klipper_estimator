@@ -23,7 +23,7 @@ pub enum FirmwareRetractionState {
     Unretracted,
     Retracted {
         lifted_z: f64,
-        retracted_length: f64,
+        unretract_length: f64,
     },
 }
 
@@ -63,13 +63,14 @@ impl FirmwareRetractionState {
         if let FirmwareRetractionState::Unretracted = self {
             let settings = &toolhead_state.limits.firmware_retraction.as_mut().unwrap();
             let lifted_z = settings.lift_z;
-            let retracted_length = settings.retract_length;
+            let retract_length = settings.retract_length;
+            let unretract_extra_length = settings.unretract_extra_length;
 
-            if retracted_length > 0.0 {
+            if retract_length > 0.0 {
                 let v = toolhead_state.velocity;
                 toolhead_state.velocity = settings.retract_speed;
                 let m = toolhead_state.perform_relative_move(
-                    [None, None, None, Some(retracted_length)],
+                    [None, None, None, Some(retract_length)],
                     Some(kind_tracker.get_kind("Firmware retract")),
                 );
                 op_sequence.add_move(m, toolhead_state);
@@ -90,7 +91,7 @@ impl FirmwareRetractionState {
 
             *self = FirmwareRetractionState::Retracted {
                 lifted_z,
-                retracted_length,
+                unretract_length: retract_length + unretract_extra_length,
             };
         }
         n
@@ -105,7 +106,7 @@ impl FirmwareRetractionState {
         let mut n = 0;
         if let FirmwareRetractionState::Retracted {
             lifted_z,
-            retracted_length,
+            unretract_length: retracted_length,
         } = self
         {
             let settings = &toolhead_state.limits.firmware_retraction.as_mut().unwrap();
