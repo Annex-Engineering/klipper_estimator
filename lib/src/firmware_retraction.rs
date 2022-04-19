@@ -61,18 +61,19 @@ impl FirmwareRetractionState {
     ) -> usize {
         let mut n = 0;
         if let FirmwareRetractionState::Unretracted = self {
-            let settings = &mut toolhead_state.limits.firmware_retraction.as_mut().unwrap();
+            let settings = &toolhead_state.limits.firmware_retraction.as_mut().unwrap();
             let lifted_z = settings.lift_z;
             let retracted_length = settings.retract_length;
 
             if retracted_length > 0.0 {
-                op_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, None, Some(retracted_length)],
-                        Some(kind_tracker.get_kind("Firmware retract")),
-                    ),
-                    toolhead_state,
+                let v = toolhead_state.velocity;
+                toolhead_state.velocity = settings.retract_speed;
+                let m = toolhead_state.perform_relative_move(
+                    [None, None, None, Some(retracted_length)],
+                    Some(kind_tracker.get_kind("Firmware retract")),
                 );
+                op_sequence.add_move(m, toolhead_state);
+                toolhead_state.velocity = v;
                 n += 1;
             }
 
@@ -107,14 +108,16 @@ impl FirmwareRetractionState {
             retracted_length,
         } = self
         {
+            let settings = &toolhead_state.limits.firmware_retraction.as_mut().unwrap();
             if *retracted_length > 0.0 {
-                op_sequence.add_move(
-                    toolhead_state.perform_relative_move(
-                        [None, None, None, Some(-*retracted_length)],
-                        Some(kind_tracker.get_kind("Firmware unretract")),
-                    ),
-                    toolhead_state,
+                let v = toolhead_state.velocity;
+                toolhead_state.velocity = settings.unretract_speed;
+                let m = toolhead_state.perform_relative_move(
+                    [None, None, None, Some(-*retracted_length)],
+                    Some(kind_tracker.get_kind("Firmware unretract")),
                 );
+                op_sequence.add_move(m, toolhead_state);
+                toolhead_state.velocity = v;
                 n += 1;
             }
 
