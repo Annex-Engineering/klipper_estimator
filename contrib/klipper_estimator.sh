@@ -1,3 +1,6 @@
+# Copyright (c) 2022 Jan "Yenda" Trmal<jtrmal@gmail.com>
+# MIT licensed
+
 #!/usr/bin/env bash
 
 #This is an example script that can be used for SLIC3R/PS/SS slicers or other
@@ -7,20 +10,20 @@
 #set > ~/Downloads/set.env
 
 #These variables can/should be customized for your liking and your setup
-#On PS/SS the more appropriae value for PRINTER  would be probably 
-#SLIC3R_PRINT_HOST but unfortunately that one seems always empty. Might be 
+#On PS/SS the more appropriate value for PRINTER  would be probably 
+#SLIC3R_PRINT_HOST but unfortunately, that one seems always empty. Might be 
 #a bug or an intention. You can however name the physical printer settings 
 #name the same as your printer hostname and ten this value would work. 
-#Other option might be set custom variable in the PRINTER SETTINGS tab to carry 
-#the domain name
-#for example: 
+#Another option might be to set a custom variable in the PRINTER SETTINGS tab 
+#to carry the domain name
+#for example (in PS tab): 
 #   PRINTER_DOMAIN_NAME=vsw.local
 # and then the following code
 #   eval ${SLIC3R_PRINTER_CUSTOM_VARIABLES}
 #   PRINTER=$PRINTER_DOMAIN_NAME
 #In that case do not forget to remove the following definition of the PRINTER 
 #variable. Using eval in the code has certain security implications
-#so do it on your own risk
+#so do it at your own risk
 
 PRINTER=${SLIC3R_PHYSICAL_PRINTER_SETTINGS_ID}
 KLIPPER_ESTIMATOR=~/.local/bin/klipper_estimator_osx
