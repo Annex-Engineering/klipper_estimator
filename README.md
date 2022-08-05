@@ -170,7 +170,13 @@ $ cargo build --release
 ```
 
 Binaries are provided for Windows, Linux, Mac OS X, and Raspberry Pi targets.
-These can be found under the `Releases` section.
+These can be found under the `Releases` section. On Linux and Mac OS X, ensure
+that you give the downloaded file executable permissions. This can be done in
+the terminal as follows:
+```
+$ chmod +x klipper_estimator
+```
+Change the filename (last parameter) to match the downloaded file.
 
 For Arch Linux, an AUR package
 [`klipper_estimator`](https://aur.archlinux.org/packages/klipper-estimator) is
