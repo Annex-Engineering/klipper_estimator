@@ -19,8 +19,8 @@ pub struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,
 
-    #[clap(long = "api_key")]
-    api_key: Option<String>,
+    #[clap(long = "config_moonraker_api_key")]
+    config_moonraker_api_key: Option<String>,
 
     #[clap(long = "config_file")]
     config_filename: Option<String>,
@@ -62,14 +62,10 @@ impl Opts {
         } else {
             PrinterLimits::default()
         };
-        let mut api_key = "";
-        if let Some(_api_key) = &self.api_key {
-            api_key = _api_key
-        }
-        //let api_key: String = "ef405007c95749cdb55f5c8940e52118".to_string();
+
         // Was moonraker config requested? If so, try to grab that first.
         if let Some(url) = &self.config_moonraker {
-            moonraker_config(url, api_key, &mut limits)?;
+            moonraker_config(url, self.config_moonraker_api_key.as_deref(), &mut limits)?;
         }
 
         Ok(limits)
@@ -92,7 +88,7 @@ pub enum MoonrakerConfigError {
 
 fn moonraker_config(
     source_url: &str,
-    api_key: &str,
+    api_key:Option<&str>,
     target: &mut PrinterLimits,
 ) -> Result<(), MoonrakerConfigError> {
     let mut url = Url::parse(source_url)?;
@@ -164,9 +160,14 @@ fn moonraker_config(
     }
 
     let client = reqwest::blocking::Client::new();
+    let mut req =  client.get(url);
 
-    let cfg = client.post(url)
-        .header("X-Api-Key", api_key).send()?
+    if let Some(api_key) = api_key {
+        // hack for rust specific borrowing issue
+        req = req.header("X-Api-Key", api_key);
+    }
+
+    let cfg = req.send()?
         .json::<MoonrakerResultRoot>()?
         .result
         .status
