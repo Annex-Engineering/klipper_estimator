@@ -19,6 +19,9 @@ pub struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,
 
+    #[clap(long = "api_key")]
+    api_key: Option<String>,
+
     #[clap(long = "config_file")]
     config_filename: Option<String>,
 
@@ -59,10 +62,14 @@ impl Opts {
         } else {
             PrinterLimits::default()
         };
-
+        let mut api_key = "";
+        if let Some(_api_key) = &self.api_key {
+            api_key = _api_key
+        }
+        //let api_key: String = "ef405007c95749cdb55f5c8940e52118".to_string();
         // Was moonraker config requested? If so, try to grab that first.
         if let Some(url) = &self.config_moonraker {
-            moonraker_config(url, &mut limits)?;
+            moonraker_config(url, api_key, &mut limits)?;
         }
 
         Ok(limits)
@@ -85,6 +92,7 @@ pub enum MoonrakerConfigError {
 
 fn moonraker_config(
     source_url: &str,
+    api_key: &str,
     target: &mut PrinterLimits,
 ) -> Result<(), MoonrakerConfigError> {
     let mut url = Url::parse(source_url)?;
@@ -155,7 +163,10 @@ fn moonraker_config(
         lift_z: f64,
     }
 
-    let cfg = reqwest::blocking::get(url)?
+    let client = reqwest::blocking::Client::new();
+
+    let cfg = client.post(url)
+        .header("X-Api-Key", api_key).send()?
         .json::<MoonrakerResultRoot>()?
         .result
         .status
