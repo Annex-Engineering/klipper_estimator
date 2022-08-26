@@ -88,7 +88,7 @@ pub enum MoonrakerConfigError {
 
 fn moonraker_config(
     source_url: &str,
-    api_key:Option<&str>,
+    api_key: Option<&str>,
     target: &mut PrinterLimits,
 ) -> Result<(), MoonrakerConfigError> {
     let mut url = Url::parse(source_url)?;
@@ -160,14 +160,14 @@ fn moonraker_config(
     }
 
     let client = reqwest::blocking::Client::new();
-    let mut req =  client.get(url);
+    let mut req = client.get(url);
 
     if let Some(api_key) = api_key {
-        // hack for rust specific borrowing issue
         req = req.header("X-Api-Key", api_key);
     }
 
-    let cfg = req.send()?
+    let cfg = req
+        .send()?
         .json::<MoonrakerResultRoot>()?
         .result
         .status
