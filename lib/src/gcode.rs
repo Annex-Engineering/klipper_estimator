@@ -232,9 +232,9 @@ mod parser {
     use super::*;
     use nom::{
         branch::alt,
-        bytes::complete::{tag, tag_no_case, take_till, take_until, take_while},
+        bytes::complete::{tag, tag_no_case, take_till, take_until, take_while, take_while1},
         character::complete::{char, satisfy, space0, space1},
-        combinator::{complete, eof, map, opt, recognize},
+        combinator::{complete, eof, map, opt},
         error::{Error, ErrorKind, ParseError},
         multi::separated_list0,
         sequence::tuple,
@@ -242,7 +242,7 @@ mod parser {
     };
     use std::borrow::Cow;
 
-    #[derive(Debug)]
+    #[derive(Debug, Eq, PartialEq)]
     pub struct GCodeParseError {
         position: String,
     }
@@ -389,10 +389,7 @@ mod parser {
     }
 
     fn extended_name(s: &str) -> IResult<&str, &str> {
-        recognize(tuple((
-            satisfy(|c| c.is_alphabetic()),
-            take_while(|c: char| c.is_alphanumeric() || c == '_'),
-        )))(s)
+        take_while1(|c: char| c.is_alphabetic() || c == '_')(s)
     }
 
     fn extended_param(s: &str) -> IResult<&str, (&str, Cow<str>)> {
