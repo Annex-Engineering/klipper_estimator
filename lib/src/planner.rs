@@ -54,7 +54,7 @@ impl Planner {
                     if s.starts_with("move to next layer ") {
                         "move to next layer"
                     } else {
-                        s.as_ref()
+                        s
                     }
                 })
                 .map(|s| self.kind_tracker.get_kind(s))
@@ -139,9 +139,9 @@ impl Planner {
                 }
                 "set_retraction" => {
                     let m = &mut self.toolhead_state;
-                    self.firmware_retraction
-                        .as_ref()
-                        .map(|fr| fr.set_options(m, params));
+                    if let Some(fr) = self.firmware_retraction.as_ref() {
+                        fr.set_options(m, params);
+                    }
                 }
                 _ => {}
             }
@@ -220,7 +220,7 @@ impl Planner {
 
     fn parse_buffer_cmd(kind_tracker: &mut KindTracker, cmd: &str) -> Option<(f64, Option<Kind>)> {
         let (a, b) = cmd
-            .split_once(" ")
+            .split_once(' ')
             .map_or((cmd, None), |(l, r)| (l, Some(r)));
         let duration = a.parse().ok()?;
         let kind = b.map(|s| kind_tracker.get_kind(s));
@@ -501,9 +501,9 @@ enum OperationSequenceOperation {
     Fill,
 }
 
-impl Into<PlanningOperation> for OperationSequenceOperation {
-    fn into(self) -> PlanningOperation {
-        match self {
+impl From<OperationSequenceOperation> for PlanningOperation {
+    fn from(oso: OperationSequenceOperation) -> Self {
+        match oso {
             OperationSequenceOperation::Delay(d) => PlanningOperation::Delay(d),
             OperationSequenceOperation::Fill => PlanningOperation::Fill,
             OperationSequenceOperation::MoveSequence(_) => {
@@ -575,9 +575,9 @@ impl MoveSequenceOperation {
     }
 }
 
-impl Into<PlanningOperation> for MoveSequenceOperation {
-    fn into(self) -> PlanningOperation {
-        match self {
+impl From<MoveSequenceOperation> for PlanningOperation {
+    fn from(mso: MoveSequenceOperation) -> Self {
+        match mso {
             MoveSequenceOperation::Move(m) => PlanningOperation::Move(m),
             MoveSequenceOperation::Fill => PlanningOperation::Fill,
         }

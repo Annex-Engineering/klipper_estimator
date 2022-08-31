@@ -60,7 +60,7 @@ impl Display for GCodeOperation {
                 params,
             } => {
                 write!(f, "{}{}", letter, code)?;
-                if params.len() > 0 {
+                if !params.is_empty() {
                     write!(f, " ")?;
                     params.fmt(f)?;
                 }
@@ -71,7 +71,7 @@ impl Display for GCodeOperation {
                 params,
             } => {
                 write!(f, "{}", cmd)?;
-                if params.len() > 0 {
+                if !params.is_empty() {
                     write!(f, " ")?;
                     params.fmt(f)?;
                 }
@@ -95,8 +95,11 @@ impl GCodeTraditionalParams {
 
     pub fn get_number<T: lexical_core::FromLexical>(&self, key: char) -> Option<T> {
         self.get_string(key)
-            .map(|v| lexical_core::parse(v.as_bytes()).ok())
-            .flatten()
+            .and_then(|v| lexical_core::parse(v.as_bytes()).ok())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     pub fn len(&self) -> usize {
@@ -128,8 +131,11 @@ impl GCodeExtendedParams {
 
     pub fn get_number<T: lexical_core::FromLexical>(&self, key: &str) -> Option<T> {
         self.get_string(key)
-            .map(|v| lexical_core::parse(v.as_bytes()).ok())
-            .flatten()
+            .and_then(|v| lexical_core::parse(v.as_bytes()).ok())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     pub fn len(&self) -> usize {

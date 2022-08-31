@@ -30,6 +30,7 @@ impl SlicerPreset {
             .or_else(|| Self::try_cura_new(comment))
     }
 
+    #[allow(clippy::manual_map)]
     fn try_slic3r(comment: &str) -> Option<SlicerPreset> {
         lazy_static! {
             static ref RE_PRUSA: Regex = Regex::new(r"PrusaSlicer\s(.*)\son").unwrap();

@@ -42,7 +42,7 @@ fn format_time(mut seconds: f64) -> String {
 #[derive(clap::ArgEnum, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum OutputFormat {
     Human,
-    JSON,
+    Json,
 }
 
 #[derive(Parser, Debug)]
@@ -221,7 +221,7 @@ impl EstimateCmd {
                 let cross_section = std::f64::consts::PI * (1.75f64 / 2.0).powf(2.0);
                 for (i, seq) in state.sequences.iter().enumerate() {
                     if i > 0 {
-                        println!("");
+                        println!();
                     }
                     println!(" Run {}:", i);
                     println!("  Total moves:                 {}", seq.num_moves);
@@ -259,7 +259,7 @@ impl EstimateCmd {
                         if let Some(max_flow) = seq.max_flow {
                             format!("{:.3} mm³/s", max_flow)
                         } else {
-                            format!("-")
+                            "-".to_string()
                         }
                     );
                     println!(
@@ -284,7 +284,7 @@ impl EstimateCmd {
                     if !kind_times.is_empty() {
                         println!("  Move kind distribution:");
                         kind_times.sort_by_key(|(_, t)| {
-                            NotNan::new(**t).unwrap_or(NotNan::new(0.0).unwrap())
+                            NotNan::new(**t).unwrap_or_else(|_| NotNan::new(0.0).unwrap())
                         });
                         let kind_length = kind_times
                             .iter()
@@ -340,12 +340,12 @@ impl EstimateCmd {
                                     print!("{t:>longest_z$}{colon}{l:>longest_t$}");
                                 }
                             }
-                            println!("");
+                            println!();
                         }
                     }
                 }
             }
-            OutputFormat::JSON => {
+            OutputFormat::Json => {
                 serde_json::to_writer_pretty(std::io::stdout(), &state)
                     .expect("Serialization error");
             }

@@ -150,7 +150,7 @@ impl GCodeInterceptor for PSSSGCodeInterceptor {
         }
 
         if let Some(com) = &command.comment {
-            if let Some(c) = RE_EST_TIME.captures(&com) {
+            if let Some(c) = RE_EST_TIME.captures(com) {
                 return Some(GCodeCommand {
                     op: GCodeOperation::Nop,
                     comment: Some(format!(
@@ -341,7 +341,7 @@ impl EstimateRunner {
             }
             self.state
                 .gcode_interceptor
-                .post_command(&cmd, &mut self.state.result);
+                .post_command(cmd, &mut self.state.result);
             if *n <= 1 {
                 let _ = self.buffer.pop_front();
             } else {
@@ -374,7 +374,7 @@ impl PostProcessCmd {
         let dst_path = self
             .filename
             .parent()
-            .unwrap_or(Path::new("/"))
+            .unwrap_or_else(|| Path::new("/"))
             .join(dst_name);
         let dst = File::create(&dst_path).expect("creating target gcode file failed");
         let mut wr = BufWriter::new(dst);
@@ -383,12 +383,12 @@ impl PostProcessCmd {
             let line = line.expect("IO error");
             if let Ok(cmd) = parse_gcode(&line) {
                 if let Some(cmd) = state.gcode_interceptor.output_process(&cmd, &state.result) {
-                    write!(wr, "{}\n", cmd).expect("IO error");
+                    writeln!(wr, "{}", cmd).expect("IO error");
                 } else {
-                    write!(wr, "{}\n", line).expect("IO error");
+                    writeln!(wr, "{}", line).expect("IO error");
                 }
             } else {
-                write!(wr, "{}\n", line).expect("IO error");
+                writeln!(wr, "{}", line).expect("IO error");
             }
         }
 
