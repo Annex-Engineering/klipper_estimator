@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::io::{self, BufRead};
 
+use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -121,7 +122,7 @@ impl Display for GCodeTraditionalParams {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Serialize)]
 pub struct GCodeExtendedParams(BTreeMap<String, String>);
 
 impl GCodeExtendedParams {
@@ -279,7 +280,7 @@ mod parser {
     fn parse(s: &str) -> IResult<&str, GCodeCommand> {
         let (s, _) = space0(s)?;
 
-        let (s, _line_no) = opt(line_number)(s)?;
+        // let (s, _line_no) = opt(line_number)(s)?;
 
         let (s, (op, comment)) = alt((
             complete(traditional_gcode),
@@ -314,7 +315,7 @@ mod parser {
     }
 
     fn traditional_gcode(s: &str) -> IResult<&str, (GCodeOperation, Option<&str>)> {
-        let (s, letter) = satisfy(|c| c.is_alphabetic())(s)?;
+        let (s, letter) = satisfy(|c| matches!(c.to_ascii_lowercase(), 'g' | 'm'))(s)?;
         let (s, code) = match lexical_core::parse_partial::<u16>(s.as_bytes()) {
             Ok((_, 0)) => return Err(Err::Error(Error::from_error_kind(s, ErrorKind::Digit))),
             Ok((value, processed)) => (s.slice(processed..), value),

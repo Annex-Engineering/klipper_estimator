@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::f64::EPSILON;
 use std::time::Duration;
 
@@ -18,20 +18,26 @@ pub struct Planner {
     pub kind_tracker: KindTracker,
     pub current_kind: Option<Kind>,
     pub firmware_retraction: Option<FirmwareRetractionState>,
+    macro_manager: crate::macros::MacroManager,
 }
 
 impl Planner {
-    pub fn from_limits(limits: PrinterLimits) -> Planner {
-        let firmware_retraction = limits
+    pub fn from_limits(config: PrinterConfiguration) -> Self {
+        let firmware_retraction = config
+            .limits
             .firmware_retraction
             .as_ref()
             .map(|_| FirmwareRetractionState::default());
+
+        let macro_manager = crate::macros::MacroManager::new(config.macro_config);
+
         Planner {
             operations: OperationSequence::default(),
-            toolhead_state: ToolheadState::from_limits(limits),
+            toolhead_state: ToolheadState::from_limits(config.limits),
             kind_tracker: KindTracker::new(),
             current_kind: None,
             firmware_retraction,
+            macro_manager,
         }
     }
 
@@ -143,7 +149,26 @@ impl Planner {
                         fr.set_options(m, params);
                     }
                 }
-                _ => {}
+                "save_gcode_state" => {
+                    // todo!()
+                }
+                "restore_gcode_state" => {
+                    // todo!()
+                }
+                other => {
+                    if let Some(rendered_macro) = self.macro_manager.render_macro(
+                        other,
+                        params.clone(),
+                        self.toolhead_state.position,
+                    ) {
+                        for cmd_line in rendered_macro.lines() {
+                            let gc = crate::gcode::parse_gcode(cmd_line).unwrap();
+                            self.process_cmd(&gc);
+                        }
+                    } else {
+                        eprintln!("unknown cmd={}", other);
+                    }
+                }
             }
             self.operations.add_fill();
         } else if cmd.op.is_nop() && cmd.comment.is_some() {
@@ -611,7 +636,7 @@ impl MoveSequence {
     }
 
     fn last_move(&self) -> Option<&PlanningMove> {
-        self.moves.iter().rev().find_map(|o| match o {
+        self.moves.back().and_then(|o| match o {
             MoveSequenceOperation::Move(m) => Some(m),
             _ => None,
         })
@@ -680,11 +705,16 @@ impl MoveSequence {
                 next_end_v2 = start_v2;
                 next_smoothed_v2 = smoothed_v2;
             }
+            // if !delayed.is_empty() {
+            //     eprintln!("del sz={}", delayed.len());
+            // }
         }
 
         if update_flush_count {
             self.flush_count = 0;
         }
+
+        drop(delayed);
 
         // Advance while the next operation is a fill
         while self.flush_count < self.moves.len() && self.moves[self.flush_count].is_fill() {
@@ -741,6 +771,16 @@ impl Default for PrinterLimits {
     }
 }
 
+// Deserialize
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PrinterConfiguration {
+    pub limits: PrinterLimits,
+    pub macro_config: MacroConfiguration,
+}
+
+pub use crate::macros::{GCodeMacro, MacroConfiguration};
+
 impl PrinterLimits {
     pub fn set_max_velocity(&mut self, v: f64) {
         self.max_velocity = v;
@@ -768,7 +808,7 @@ impl PrinterLimits {
 
     fn scv_to_jd(scv: f64, acceleration: f64) -> f64 {
         let scv2 = scv * scv;
-        scv2 * (2.0f64.sqrt() - 1.0) / acceleration
+        scv2 * (std::f64::consts::SQRT_2 - 1.0) / acceleration
     }
 }
 
@@ -784,7 +824,7 @@ impl Default for PositionMode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ToolheadState {
     pub position: Vec4,
     pub position_modes: [PositionMode; 4],
