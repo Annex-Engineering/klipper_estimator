@@ -79,10 +79,7 @@ impl GCodeInterceptor for M73GcodeInterceptor {
         }
         let next = self.time_buffer.pop_front()?;
         let params = vec![
-            (
-                'P',
-                format!("{}", (next / result.total_time * 100.0).round()),
-            ),
+            ('P', format!("{:.3}", (next / result.total_time * 100.0))),
             (
                 'R',
                 format!("{}", ((result.total_time - next) / 60.0).round()),
