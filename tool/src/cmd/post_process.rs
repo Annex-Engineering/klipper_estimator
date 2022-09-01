@@ -81,7 +81,7 @@ impl GCodeInterceptor for M73GcodeInterceptor {
         let params = vec![
             (
                 'P',
-                format!("{}", (next / result.total_time * 100.0).round()),
+                format!("{:.3}", (next / result.total_time * 100.0)),
             ),
             (
                 'R',
