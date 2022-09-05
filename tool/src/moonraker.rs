@@ -155,9 +155,8 @@ pub fn moonraker_config(
             }
         }
 
-        let val_obj = val.as_object().unwrap();
+        let val_obj = val.as_object().ok_or(())?;
         let variables: HashMap<String, serde_json::Value> = val_obj
-            .to_owned()
             .iter()
             .filter(|(k, _)| k.starts_with("variable_"))
             .map(|(k, v)| {

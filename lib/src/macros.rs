@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use glam::DVec3 as Vec3;
 use glam::{DVec4, Vec4Swizzles};
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone)]
@@ -16,23 +17,11 @@ impl MacroToolheadPosition {
     }
 }
 
+#[derive(Debug)]
 struct PrinterObj {
     config_map: HashMap<String, minijinja::value::Value>,
     toolhead_position: MacroToolheadPosition,
     axis_maximum: Position,
-}
-
-impl std::fmt::Debug for PrinterObj {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PrinterObj")
-            // skip serializing the configuration since usually it's a wall of text
-            // nobody is interested in
-            // .field("config_map", &self.config_map)
-            .field("config_map", &"<...>")
-            .field("toolhead_position", &self.toolhead_position)
-            .field("axis_maximum", &self.axis_maximum)
-            .finish()
-    }
 }
 
 impl std::fmt::Display for PrinterObj {
@@ -54,52 +43,10 @@ impl minijinja::value::Object for PrinterObj {
     fn attributes(&self) -> &[&str] {
         unimplemented!()
     }
-
-    fn call_method(
-        &self,
-        state: &minijinja::State,
-        name: &str,
-        args: Vec<minijinja::value::Value>,
-    ) -> Result<minijinja::value::Value, minijinja::Error> {
-        let _state = state;
-        let _args = args;
-        Err(minijinja::Error::new(
-            minijinja::ErrorKind::ImpossibleOperation,
-            format!("object has no method named {}", name),
-        ))
-    }
-
-    fn call(
-        &self,
-        state: &minijinja::State,
-        args: Vec<minijinja::value::Value>,
-    ) -> Result<minijinja::value::Value, minijinja::Error> {
-        let _state = state;
-        let _args = args;
-        Err(minijinja::Error::new(
-            minijinja::ErrorKind::ImpossibleOperation,
-            "tried to call non callable object",
-        ))
-    }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize)]
 struct Position(Vec3);
-
-impl Serialize for Position {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-
-        let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("x", &self.0.x)?;
-        map.serialize_entry("y", &self.0.y)?;
-        map.serialize_entry("z", &self.0.z)?;
-        map.end()
-    }
-}
 
 #[derive(Debug, Serialize)]
 struct Toolhead {
@@ -156,30 +103,36 @@ impl PrinterObj {
     }
 }
 
+fn convert_macro_string(gcode: &str) -> String {
+    lazy_static! {
+        static ref RE_BRACES: Regex =
+            Regex::new(r"(?x) ( \{\S\} ) | ( \{[^%] ) | ( [^%]\} )").unwrap();
+    }
+
+    RE_BRACES
+        .replace_all(gcode, |cap: &regex::Captures| {
+            if let Some(m) = cap.get(1) {
+                "{".to_owned() + m.as_str() + "}"
+            } else if let Some(m) = cap.get(2) {
+                "{".to_owned() + m.as_str()
+            } else if let Some(m) = cap.get(3) {
+                m.as_str().to_owned() + "}"
+            } else {
+                unreachable!()
+            }
+        })
+        .to_ascii_lowercase()
+}
+
 fn read_macros<'a, I>(macros: I) -> minijinja::Source
 where
     I: IntoIterator<Item = &'a GCodeMacro>,
 {
-    let re_braces = regex::Regex::new(r"(?x) ( \{\S\} ) | ( \{[^%] ) | ( [^%]\} )").unwrap();
-
     let mut src = minijinja::Source::new();
 
     for mac in macros {
-        let res = re_braces
-            .replace_all(&mac.gcode, |cap: &regex::Captures| {
-                if let Some(m) = cap.get(1) {
-                    "{".to_owned() + m.as_str() + "}"
-                } else if let Some(m) = cap.get(2) {
-                    "{".to_owned() + m.as_str()
-                } else if let Some(m) = cap.get(3) {
-                    m.as_str().to_owned() + "}"
-                } else {
-                    unreachable!()
-                }
-            })
-            .to_ascii_lowercase();
-
-        src.add_template(&mac.name, res).unwrap();
+        src.add_template(&mac.name, convert_macro_string(&mac.gcode))
+            .unwrap();
     }
 
     src
@@ -270,12 +223,12 @@ pub(crate) struct MacroManager {
 
 impl MacroManager {
     pub fn new(config: MacroConfiguration) -> Self {
-        let toolhead_position = crate::macros::MacroToolheadPosition::default();
-        let printer_obj = crate::macros::PrinterObj::new(&config, toolhead_position.clone());
+        let toolhead_position = MacroToolheadPosition::default();
+        let printer_obj = PrinterObj::new(&config, toolhead_position.clone());
 
-        let src = crate::macros::read_macros(&config.macros);
+        let src = read_macros(&config.macros);
 
-        let mut macro_environment = crate::macros::create_macro_environment(src);
+        let mut macro_environment = create_macro_environment(src);
         macro_environment.add_global("printer", minijinja::value::Value::from_object(printer_obj));
 
         let macro_variables = config
