@@ -18,7 +18,7 @@ pub struct FirmwareRetractionOptions {
     pub lift_z: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FirmwareRetractionState {
     Unretracted,
     Retracted {
