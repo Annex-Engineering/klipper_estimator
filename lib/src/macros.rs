@@ -25,6 +25,8 @@ struct PrinterObj {
 impl std::fmt::Debug for PrinterObj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrinterObj")
+            // skip serializing the configuration since usually it's a wall of text
+            // nobody is interested in
             // .field("config_map", &self.config_map)
             .field("config_map", &"<...>")
             .field("toolhead_position", &self.toolhead_position)
@@ -252,7 +254,6 @@ where
     pub gcode: String,
 }
 
-// Deserialize
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MacroConfiguration {

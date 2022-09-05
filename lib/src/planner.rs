@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{VecDeque};
 use std::f64::EPSILON;
 use std::time::Duration;
 

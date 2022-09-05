@@ -82,7 +82,7 @@ impl Display for GCodeOperation {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct GCodeTraditionalParams(Vec<(char, String)>);
 
 impl GCodeTraditionalParams {
