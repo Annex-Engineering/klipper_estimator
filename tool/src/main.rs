@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use lib_klipper::glam::DVec3;
 use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits};
 
@@ -18,12 +16,18 @@ mod cmd;
 pub struct Opts {
     #[clap(long = "config_moonraker_url")]
     config_moonraker: Option<String>,
-
     #[clap(long = "config_moonraker_api_key")]
     config_moonraker_api_key: Option<String>,
+    #[clap(long = "config_moonraker_ignore_error")]
+    config_moonraker_ignore_error: bool,
+    #[clap(long = "config_moonraker_cache_file")]
+    config_moonraker_cache_file: Option<String>,
 
     #[clap(long = "config_file")]
     config_filename: Option<String>,
+
+    #[clap(short = 'c')]
+    config_override: Vec<String>,
 
     #[clap(subcommand)]
     cmd: SubCommand,
@@ -49,25 +53,47 @@ impl Opts {
         }
     }
 
-    fn load_config(&self) -> Result<PrinterLimits, Box<dyn Error>> {
-        // Load config file
-        let mut limits = if let Some(filename) = &self.config_filename {
-            let src = std::fs::read_to_string(filename)?;
-            let mut limits: PrinterLimits = deser_hjson::from_str(&src)?;
+    fn opt_parse<'a>(s: &'a str) -> anyhow::Result<(&'a str, &'a str)> {
+        let eqat = match s.find('=') {
+            None => anyhow::bail!("invalid config override, format key=value"),
+            Some(idx) => idx,
+        };
+        let key = &s[..eqat];
+        let value = &s[eqat + 1..];
+        Ok((key, value))
+    }
 
-            // Do any fix-ups
-            limits.set_square_corner_velocity(limits.square_corner_velocity);
+    fn load_config(&self) -> anyhow::Result<PrinterLimits> {
+        use config::Config;
 
-            limits
+        let builder = Config::builder();
+
+        let builder = if let Some(url) = &self.config_moonraker {
+            builder.add_source(MoonrakerSource::new(
+                url,
+                self.config_moonraker_api_key.as_deref(),
+                self.config_moonraker_ignore_error,
+                self.config_moonraker_cache_file.as_deref(),
+            ))
         } else {
-            PrinterLimits::default()
+            builder
         };
 
-        // Was moonraker config requested? If so, try to grab that first.
-        if let Some(url) = &self.config_moonraker {
-            moonraker_config(url, self.config_moonraker_api_key.as_deref(), &mut limits)?;
-        }
+        let builder = if let Some(filename) = &self.config_filename {
+            builder.add_source(config::File::new(filename, config::FileFormat::Json5))
+        } else {
+            builder
+        };
 
+        let builder = self
+            .config_override
+            .iter()
+            .try_fold(builder, |builder, opt| {
+                let (k, v) = Self::opt_parse(opt)?;
+                Ok::<_, anyhow::Error>(builder.set_override(k, v)?)
+            })?;
+
+        let limits = builder.build()?.try_deserialize::<PrinterLimits>()?;
         Ok(limits)
     }
 
@@ -84,6 +110,72 @@ pub enum MoonrakerConfigError {
     URLParseError(#[from] url::ParseError),
     #[error("request failed: {}", .0)]
     RequestError(#[from] reqwest::Error),
+}
+
+#[derive(Debug, Clone)]
+struct MoonrakerSource {
+    url: String,
+    api_key: Option<String>,
+    ignore_error: bool,
+    cache_file: Option<String>,
+}
+
+impl MoonrakerSource {
+    fn new(
+        url: &str,
+        api_key: Option<&str>,
+        ignore_error: bool,
+        cache_file: Option<&str>,
+    ) -> MoonrakerSource {
+        MoonrakerSource {
+            url: url.into(),
+            api_key: api_key.map(str::to_string),
+            ignore_error,
+            cache_file: cache_file.map(str::to_string),
+        }
+    }
+}
+
+impl config::Source for MoonrakerSource {
+    fn clone_into_box(&self) -> Box<dyn config::Source + Send + Sync> {
+        Box::new(self.clone())
+    }
+
+    fn collect(&self) -> Result<config::Map<String, config::Value>, config::ConfigError> {
+        let mut limits = PrinterLimits::default();
+
+        let res = moonraker_config(&self.url, self.api_key.as_deref(), &mut limits);
+        let cfg = if let Err(e) = res {
+            if self.ignore_error {
+                eprintln!("Could not get config from Moonraker, ignoring. Error was:\n{e}");
+
+                if let Some(cache_file) = self.cache_file.as_deref() {
+                    eprintln!("Using cached Moonraker config");
+                    match std::fs::read(cache_file) {
+                        Err(e) => {
+                            eprintln!("Could not read Moonraker cached config: {e}");
+                            return Ok(Default::default());
+                        }
+                        Ok(cfg) => std::str::from_utf8(&cfg).unwrap_or("").into(),
+                    }
+                } else {
+                    return Ok(Default::default());
+                }
+            } else {
+                return Err(config::ConfigError::Foreign(Box::new(e)));
+            }
+        } else {
+            let cfg = serde_json::to_string(&limits).unwrap();
+            if let Some(cache_file) = self.cache_file.as_deref() {
+                if let Err(e) = std::fs::write(cache_file, &cfg) {
+                    eprintln!("Could not write Moonraker cached config: {e}");
+                }
+            }
+            cfg
+        };
+        let file = config::File::from_str(&cfg, config::FileFormat::Json);
+        file.collect()
+    }
 }
 
 fn moonraker_config(

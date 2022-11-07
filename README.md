@@ -36,8 +36,8 @@ To dump a config, use e.g.:
 $ ./klipper_estimator --config_moonraker_url http://192.168.0.21 dump-config > config.json
 ```
 
-The config file format is Hjson and thus allows normal JSON with some
-extensions(see https://hjson.github.io/).
+The config file format is Json5 and thus allows normal JSON with some
+extensions(see https://json5.org/).
 
 After generating a config, one can use this in other commands like so:
 ```
