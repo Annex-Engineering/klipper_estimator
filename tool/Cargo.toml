@@ -22,7 +22,6 @@ ordered-float = { version = "2", features = ["serde"] }
 term_size = "0.3"
 thiserror = "1"
 config = { version = "0.13", features = ["json5"] }
-git2 = "^0"
 anyhow = "1"
 
 [build-dependencies]
