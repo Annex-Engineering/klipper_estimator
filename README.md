@@ -14,6 +14,24 @@ off(e.g. more than a minute over a >12 hour print), this is considered a bug.
 
 Note that currently delta kinematic limits are _not_ implemented.
 
+## Getting `klipper_estimator`
+
+Pre-built binaries are available for the latest release on the GitHub Releases
+page. If you wish to build the tool yourself or poke around the source, see the
+[Building section](#Building).
+
+Binaries are provided for Windows, Linux, Mac OS X, and Raspberry Pi targets.
+On Linux and Mac OS X, ensure that you give the downloaded file executable
+permissions. This can be done in the terminal as follows:
+```
+$ chmod +x klipper_estimator
+```
+Change the filename (last parameter) to match the downloaded file.
+
+For Arch Linux, an AUR package
+[`klipper_estimator`](https://aur.archlinux.org/packages/klipper-estimator) is
+available, courtesy of Wilhelm Schuster. Thanks!
+
 ## Usage
 
 Basic usage info can be found by running `klipper_estimator` with no arguments.
@@ -168,19 +186,6 @@ $ cd klipper_estimator
 $ cargo build --release
 // Resulting binary will be at `target/release/klipper_estimator`(.exe on Windows)
 ```
-
-Binaries are provided for Windows, Linux, Mac OS X, and Raspberry Pi targets.
-These can be found under the `Releases` section. On Linux and Mac OS X, ensure
-that you give the downloaded file executable permissions. This can be done in
-the terminal as follows:
-```
-$ chmod +x klipper_estimator
-```
-Change the filename (last parameter) to match the downloaded file.
-
-For Arch Linux, an AUR package
-[`klipper_estimator`](https://aur.archlinux.org/packages/klipper-estimator) is
-available, courtesy of Wilhelm Schuster. Thanks!
 
 ## Acknowledgements
 
