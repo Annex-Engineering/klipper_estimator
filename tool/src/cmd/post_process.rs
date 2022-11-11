@@ -256,10 +256,10 @@ impl GCodeInterceptor for CuraGCodeInterceptor {
 
 fn metadata_processor(preset: &SlicerPreset) -> Box<dyn GCodeInterceptor> {
     match preset {
-        SlicerPreset::PrusaSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
-        SlicerPreset::SuperSlicer { .. } => Box::new(PSSSGCodeInterceptor::default()),
-        SlicerPreset::IdeaMaker { .. } => Box::new(IdeaMakerGCodeInterceptor::default()),
-        SlicerPreset::Cura { .. } => Box::new(CuraGCodeInterceptor::default()),
+        SlicerPreset::PrusaSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
+        SlicerPreset::SuperSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
+        SlicerPreset::IdeaMaker { .. } => Box::<IdeaMakerGCodeInterceptor>::default(),
+        SlicerPreset::Cura { .. } => Box::<CuraGCodeInterceptor>::default(),
     }
 }
 
@@ -284,11 +284,12 @@ struct PostProcessState {
     gcode_interceptor: Box<dyn GCodeInterceptor>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl std::default::Default for PostProcessState {
     fn default() -> Self {
         PostProcessState {
             result: PostProcessEstimationResult::default(),
-            gcode_interceptor: Box::new(NoopGCodeInterceptor::default()),
+            gcode_interceptor: Box::<NoopGCodeInterceptor>::default(),
         }
     }
 }

@@ -53,7 +53,7 @@ impl Opts {
         }
     }
 
-    fn opt_parse<'a>(s: &'a str) -> anyhow::Result<(&'a str, &'a str)> {
+    fn opt_parse(s: &str) -> anyhow::Result<(&str, &str)> {
         let eqat = match s.find('=') {
             None => anyhow::bail!("invalid config override, format key=value"),
             Some(idx) => idx,
