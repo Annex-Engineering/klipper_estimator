@@ -254,12 +254,58 @@ impl GCodeInterceptor for CuraGCodeInterceptor {
     }
 }
 
+#[derive(Debug, Default)]
+struct Simplify3DGCodeInterceptor {}
+
+impl Simplify3DGCodeInterceptor {
+    fn format_dhms(mut time: f64) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        time = time.ceil();
+        let h = (time / 3600.0).floor();
+        if h > 0.0 {
+            write!(out, " {:.0} hours", h).unwrap();
+        }
+        time %= 3600.0;
+        let m = (time / 60.0).floor();
+        if m > 0.0 {
+            write!(out, " {:.0} minutes", m).unwrap();
+        }
+        time %= 60.0;
+        let s = time;
+        write!(out, " {:.0} sec", s).unwrap();
+        out
+    }
+}
+
+impl GCodeInterceptor for Simplify3DGCodeInterceptor {
+    fn output_process(
+        &mut self,
+        command: &GCodeCommand,
+        result: &PostProcessEstimationResult,
+    ) -> Option<GCodeCommand> {
+        if let Some(com) = &command.comment {
+            if com.starts_with("   Build Time: ") {
+                return Some(GCodeCommand {
+                    op: GCodeOperation::Nop,
+                    comment: Some(format!(
+                        "   Build Time:{}",
+                        Self::format_dhms(result.total_time.ceil())
+                    )),
+                });
+            }
+        }
+        None
+    }
+}
+
 fn metadata_processor(preset: &SlicerPreset) -> Box<dyn GCodeInterceptor> {
     match preset {
         SlicerPreset::PrusaSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
         SlicerPreset::SuperSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
         SlicerPreset::IdeaMaker { .. } => Box::<IdeaMakerGCodeInterceptor>::default(),
         SlicerPreset::Cura { .. } => Box::<CuraGCodeInterceptor>::default(),
+        SlicerPreset::Simplify3D { .. } => Box::<Simplify3DGCodeInterceptor>::default(),
     }
 }
 

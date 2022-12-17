@@ -6,6 +6,7 @@ pub enum SlicerPreset {
     SuperSlicer { version: String },
     IdeaMaker { version: String },
     Cura { version: Option<String> },
+    Simplify3D { version: String },
 }
 
 impl std::fmt::Display for SlicerPreset {
@@ -18,6 +19,7 @@ impl std::fmt::Display for SlicerPreset {
             SlicerPreset::Cura {
                 version: Some(version),
             } => write!(f, "Cura {}", version),
+            SlicerPreset::Simplify3D { version } => write!(f, "Simplify3D {}", version),
         }
     }
 }
@@ -28,6 +30,7 @@ impl SlicerPreset {
             .or_else(|| Self::try_ideamaker(comment))
             .or_else(|| Self::try_cura_old(comment))
             .or_else(|| Self::try_cura_new(comment))
+            .or_else(|| Self::try_simplify3d(comment))
     }
 
     #[allow(clippy::manual_map)]
@@ -73,5 +76,14 @@ impl SlicerPreset {
         }
         RE.captures(comment)
             .map(|_| SlicerPreset::Cura { version: None })
+    }
+
+    fn try_simplify3d(comment: &str) -> Option<SlicerPreset> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"Simplify3D\(R\)\sVersion\s(.*)").unwrap();
+        }
+        RE.captures(comment).map(|c| SlicerPreset::Simplify3D {
+            version: c.get(1).unwrap().as_str().into(),
+        })
     }
 }
