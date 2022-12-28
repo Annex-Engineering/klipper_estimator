@@ -143,6 +143,14 @@ impl Planner {
                         fr.set_options(m, params);
                     }
                 }
+                "_use_infill_sqv" => {
+                    self.toolhead_state
+                        .limits
+                        .use_gyroid_square_corner_velocity();
+                }
+                "_use_normal_sqv" => {
+                    self.toolhead_state.limits.restore_square_corner_velocity();
+                }
                 _ => {}
             }
             self.operations.add_fill();
@@ -718,6 +726,10 @@ pub struct PrinterLimits {
     pub max_acceleration: f64,
     pub max_accel_to_decel: f64,
     pub square_corner_velocity: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gyroid_square_corner_velocity: Option<f64>,
+    #[serde(default, skip)]
+    pub old_square_corner_velocity: Option<f64>,
     #[serde(skip)]
     pub junction_deviation: f64,
     pub instant_corner_velocity: f64,
@@ -733,6 +745,8 @@ impl Default for PrinterLimits {
             max_acceleration: 100.0,
             max_accel_to_decel: 50.0,
             square_corner_velocity: 5.0,
+            gyroid_square_corner_velocity: None,
+            old_square_corner_velocity: None,
             junction_deviation: Self::scv_to_jd(5.0, 100000.0),
             instant_corner_velocity: 1.0,
             move_checkers: vec![],
@@ -760,6 +774,23 @@ impl PrinterLimits {
         self.square_corner_velocity = scv;
         self.junction_deviation =
             Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+    }
+
+    fn restore_square_corner_velocity(&mut self) {
+        if let Some(old_scv) = self.old_square_corner_velocity.take() {
+            self.square_corner_velocity = old_scv;
+        }
+    }
+
+    fn use_gyroid_square_corner_velocity(&mut self) {
+        if self.old_square_corner_velocity.is_some() {
+            // We're already using gyroid SCV!
+            return;
+        }
+        if let Some(gyroid_scv) = self.gyroid_square_corner_velocity {
+            self.old_square_corner_velocity = Some(self.square_corner_velocity);
+            self.square_corner_velocity = gyroid_scv;
+        }
     }
 
     pub fn set_instant_corner_velocity(&mut self, icv: f64) {
