@@ -155,7 +155,7 @@ To compensate for this, `klipper_estimator` understands the following gcode
 comment(generally syntax followed by some examples):
 
 ```
-; ESTIMATOR_ADD_TIME <duration> [description]
+; ESTIMATOR_ADD_TIME <duration, seconds> [description]
 ; E.g.:
 ; ESTIMATOR_ADD_TIME 21
 ; ESTIMATOR_ADD_TIME 21 Print start
