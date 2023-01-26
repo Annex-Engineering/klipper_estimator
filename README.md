@@ -148,7 +148,9 @@ Options` under `Print Settings`:
 Note that ideaMaker does not have support for post-processing scripts, and thus
 cannot automatically run `klipper_estimator` on export.
 
-For Cura, use the script in `compat/CuraPostProcessing/`.
+For Cura, using
+[klipper Preprocessor](https://github.com/pedrolamas/klipper-preprocessor) is
+recommended. See their git repository for information on how to set up this tool.
 
 In Simplify3D the relevant estimation command must be added under `Scripts` in
 the `Additional terminal commands for post processing` field.
