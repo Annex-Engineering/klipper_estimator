@@ -304,6 +304,7 @@ pub struct PlanningMove {
     pub rate: Vec4,
     pub requested_velocity: f64,
     pub acceleration: f64,
+    pub junction_deviation: f64,
     pub max_start_v2: f64,
     pub max_cruise_v2: f64,
     pub max_dv2: f64,
@@ -339,6 +340,7 @@ impl PlanningMove {
             rate: dirs * inv_move_d,
             requested_velocity: toolhead_state.velocity,
             acceleration: f64::MAX,
+            junction_deviation: toolhead_state.limits.junction_deviation,
             max_start_v2: 0.0,
             max_cruise_v2: toolhead_state.velocity * toolhead_state.velocity,
             max_dv2: f64::MAX,
@@ -365,6 +367,7 @@ impl PlanningMove {
             rate: (end - start) / distance,
             requested_velocity: velocity,
             acceleration: toolhead_state.limits.max_acceleration,
+            junction_deviation: toolhead_state.limits.junction_deviation,
             max_start_v2: 0.0,
             max_cruise_v2: velocity * velocity,
             max_dv2: 2.0 * distance * toolhead_state.limits.max_acceleration,
@@ -384,13 +387,13 @@ impl PlanningMove {
         }
 
         let mut junction_cos_theta = -self.rate.xyz().dot(previous_move.rate.xyz());
-        if junction_cos_theta > 0.99999 {
+        if junction_cos_theta > 0.999999 {
             // Move was not at an angle, skip all this
             return;
         }
         junction_cos_theta = junction_cos_theta.max(-0.999999);
         let sin_theta_d2 = (0.5 * (1.0 - junction_cos_theta)).sqrt();
-        let r = toolhead_state.limits.junction_deviation * sin_theta_d2 / (1.0 - sin_theta_d2);
+        let r = sin_theta_d2 / (1.0 - sin_theta_d2);
         let tan_theta_d2 = sin_theta_d2 / (0.5 * (1.0 + junction_cos_theta)).sqrt();
         let move_centripetal_v2 = 0.5 * self.distance * tan_theta_d2 * self.acceleration;
         let prev_move_centripetal_v2 =
@@ -399,8 +402,8 @@ impl PlanningMove {
         let extruder_v2 = toolhead_state.extruder_junction_speed_v2(self, previous_move);
 
         self.max_start_v2 = extruder_v2
-            .min(r * self.acceleration)
-            .min(r * previous_move.acceleration)
+            .min(r * self.junction_deviation * self.acceleration)
+            .min(r * previous_move.junction_deviation * previous_move.acceleration)
             .min(move_centripetal_v2)
             .min(prev_move_centripetal_v2)
             .min(self.max_cruise_v2)
@@ -742,14 +745,18 @@ impl Default for PrinterLimits {
 }
 
 impl PrinterLimits {
+    pub fn update_junction_deviation(&mut self) {
+        self.junction_deviation =
+            Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+    }
+
     pub fn set_max_velocity(&mut self, v: f64) {
         self.max_velocity = v;
     }
 
     pub fn set_max_acceleration(&mut self, v: f64) {
         self.max_acceleration = v;
-        self.junction_deviation =
-            Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+        self.update_junction_deviation();
     }
 
     pub fn set_max_accel_to_decel(&mut self, v: f64) {
@@ -758,8 +765,7 @@ impl PrinterLimits {
 
     pub fn set_square_corner_velocity(&mut self, scv: f64) {
         self.square_corner_velocity = scv;
-        self.junction_deviation =
-            Self::scv_to_jd(self.square_corner_velocity, self.max_acceleration);
+        self.update_junction_deviation();
     }
 
     pub fn set_instant_corner_velocity(&mut self, icv: f64) {
