@@ -62,6 +62,26 @@ After generating a config, one can use this in other commands like so:
 $ ./klipper_estimator --config_file config.json estimate ...
 ```
 
+### Quirks
+
+Be aware of the following "quirks" when using `klipper_estimator` compared to Klipper itself:
+
+#### Relative extrusion by default
+
+`klipper_estimator` assumes _relative_ extrusion and _absolute_ movement by
+default. This is different from Klipper, which assumes _absolute_ extrusion as
+well. This difference exists because `klipper_estimator` can't see inside
+macros. Most users use relative extrusion, and put the M83 command in their
+print start macro, making it invisible to `klipper_estimator`.
+
+If you wish to use _absolute_ extrusion, you must ensure that an `M82` command
+is inserted in your slicer start gcode. E.g.:
+
+```
+PRINT_START
+M82
+```
+
 ### `estimate` mode
 
 Estimation mode is useful for determining statistics about a print, in order to
