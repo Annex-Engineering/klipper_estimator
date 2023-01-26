@@ -93,7 +93,8 @@ impl Opts {
                 Ok::<_, anyhow::Error>(builder.set_override(k, v)?)
             })?;
 
-        let limits = builder.build()?.try_deserialize::<PrinterLimits>()?;
+        let mut limits = builder.build()?.try_deserialize::<PrinterLimits>()?;
+        limits.update_junction_deviation();
         Ok(limits)
     }
 
