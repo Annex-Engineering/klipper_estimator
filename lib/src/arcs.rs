@@ -32,19 +32,20 @@ impl ArcState {
             direction,
             args.mm_per_arc_segment,
         );
-        let e_base = toolhead_state.position.w;
-        let e_per_move = args.e.map(|e| (e - e_base) / (segments as f64));
+        let mut e_base = toolhead_state.position.w;
+        let e_per_move = args.e.map_or(0.0, |e| (e - e_base) / (segments as f64));
 
         toolhead_state.set_speed(args.velocity);
 
         let old_pos_mode = toolhead_state.position_modes;
         toolhead_state.position_modes = [PositionMode::Absolute; 4];
-        for (i, segment) in arc.enumerate() {
+        for segment in arc {
+            e_base += e_per_move;
             let coord = [
                 Some(segment.x),
                 Some(segment.y),
                 Some(segment.z),
-                e_per_move.map(|e| e_base + (i as f64) * e),
+                Some(e_base),
             ];
             let mut pm = toolhead_state.perform_move(coord);
             pm.kind = move_kind;
