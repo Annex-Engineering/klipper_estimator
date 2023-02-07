@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+pub mod arcs;
 pub mod firmware_retraction;
 pub mod gcode;
 mod kind_tracker;

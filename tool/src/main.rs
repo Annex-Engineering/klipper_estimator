@@ -218,6 +218,7 @@ fn moonraker_config(
         printer: PrinterConfig,
         extruder: ExtruderConfig,
         firmware_retraction: Option<FirmwareRetractionConfig>,
+        gcode_arcs: Option<GcodeArcsConfig>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -252,6 +253,11 @@ fn moonraker_config(
         lift_z: f64,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct GcodeArcsConfig {
+        resolution: Option<f64>,
+    }
+
     let client = reqwest::blocking::Client::new();
     let mut req = client.get(url);
 
@@ -272,6 +278,8 @@ fn moonraker_config(
     target.set_max_accel_to_decel(cfg.printer.max_accel_to_decel);
     target.set_square_corner_velocity(cfg.printer.square_corner_velocity);
     target.set_instant_corner_velocity(cfg.extruder.instantaneous_corner_velocity);
+
+    target.mm_per_arc_segment = cfg.gcode_arcs.and_then(|cfg| cfg.resolution);
 
     target.firmware_retraction = cfg.firmware_retraction.map(|fr| FirmwareRetractionOptions {
         retract_length: fr.retract_length,

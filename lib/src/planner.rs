@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::f64::EPSILON;
 use std::time::Duration;
 
+use crate::arcs::ArcState;
 pub use crate::firmware_retraction::FirmwareRetractionOptions;
 use crate::firmware_retraction::FirmwareRetractionState;
 use crate::gcode::{GCodeCommand, GCodeOperation};
@@ -16,8 +17,8 @@ pub struct Planner {
     operations: OperationSequence,
     pub toolhead_state: ToolheadState,
     pub kind_tracker: KindTracker,
-    pub current_kind: Option<Kind>,
     pub firmware_retraction: Option<FirmwareRetractionState>,
+    pub arc_state: ArcState,
 }
 
 impl Planner {
@@ -30,8 +31,8 @@ impl Planner {
             operations: OperationSequence::default(),
             toolhead_state: ToolheadState::from_limits(limits),
             kind_tracker: KindTracker::new(),
-            current_kind: None,
             firmware_retraction,
+            arc_state: ArcState::default(),
         }
     }
 
@@ -46,19 +47,7 @@ impl Planner {
                 self.toolhead_state.set_speed(v / 60.0);
             }
 
-            let move_kind = cmd
-                .comment
-                .as_ref()
-                .map(|s| s.trim())
-                .map(|s| {
-                    if s.starts_with("move to next layer ") {
-                        "move to next layer"
-                    } else {
-                        s
-                    }
-                })
-                .map(|s| self.kind_tracker.get_kind(s))
-                .or(self.current_kind);
+            let move_kind = self.kind_tracker.kind_from_comment(&cmd.comment);
 
             if x.is_some() || y.is_some() || z.is_some() || e.is_some() {
                 let mut m = self.toolhead_state.perform_move([*x, *y, *z, *e]);
@@ -89,6 +78,31 @@ impl Planner {
                     if let Some(fr) = self.firmware_retraction.as_mut() {
                         return fr.unretract(kt, m, seq);
                     }
+                }
+                ('G', v @ 2 | v @ 3) => {
+                    let move_kind = self.kind_tracker.kind_from_comment(&cmd.comment);
+                    let m = &mut self.toolhead_state;
+                    let seq = &mut self.operations;
+                    return self.arc_state.generate_arc(
+                        m,
+                        seq,
+                        move_kind,
+                        params,
+                        match v {
+                            2 => crate::arcs::ArcDirection::Clockwise,
+                            3 => crate::arcs::ArcDirection::CounterClockwise,
+                            _ => unreachable!("v can only be 2 or 3"),
+                        },
+                    );
+                }
+                ('G', 17) => {
+                    self.arc_state.set_plane(crate::arcs::Plane::XY);
+                }
+                ('G', 18) => {
+                    self.arc_state.set_plane(crate::arcs::Plane::XZ);
+                }
+                ('G', 19) => {
+                    self.arc_state.set_plane(crate::arcs::Plane::YZ);
                 }
                 ('G', 92) => {
                     if let Some(v) = params.get_number::<f64>('X') {
@@ -151,7 +165,8 @@ impl Planner {
 
             if let Some(comment) = comment.strip_prefix("TYPE:") {
                 // IdeaMaker only gives us `TYPE:`s
-                self.current_kind = Some(self.kind_tracker.get_kind(comment));
+                let kind = self.kind_tracker.get_kind(comment);
+                self.kind_tracker.set_current(Some(kind));
                 self.operations.add_fill();
             } else if let Some(cmd) = comment.trim_start().strip_prefix("ESTIMATOR_ADD_TIME ") {
                 if let Some((duration, kind)) = Self::parse_buffer_cmd(&mut self.kind_tracker, cmd)
@@ -321,7 +336,7 @@ pub struct PlanningMove {
 impl PlanningMove {
     /// Create a new `PlanningMove` that travels between the two points `start`
     /// and `end`.
-    fn new(start: Vec4, end: Vec4, toolhead_state: &ToolheadState) -> PlanningMove {
+    pub(crate) fn new(start: Vec4, end: Vec4, toolhead_state: &ToolheadState) -> PlanningMove {
         if start.xyz() == end.xyz() {
             Self::new_extrude_move(start, end, toolhead_state)
         } else {
@@ -724,9 +739,11 @@ pub struct PrinterLimits {
     #[serde(skip)]
     pub junction_deviation: f64,
     pub instant_corner_velocity: f64,
-    pub move_checkers: Vec<MoveChecker>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub firmware_retraction: Option<FirmwareRetractionOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mm_per_arc_segment: Option<f64>,
+    pub move_checkers: Vec<MoveChecker>,
 }
 
 impl Default for PrinterLimits {
@@ -740,6 +757,7 @@ impl Default for PrinterLimits {
             instant_corner_velocity: 1.0,
             move_checkers: vec![],
             firmware_retraction: None,
+            mm_per_arc_segment: None,
         }
     }
 }
@@ -847,7 +865,7 @@ impl ToolheadState {
         pm
     }
 
-    fn new_element(v: f64, old: f64, mode: PositionMode) -> f64 {
+    pub(crate) fn new_element(v: f64, old: f64, mode: PositionMode) -> f64 {
         match mode {
             PositionMode::Relative => old + v,
             PositionMode::Absolute => v,

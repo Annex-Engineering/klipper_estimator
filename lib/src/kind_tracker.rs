@@ -4,6 +4,7 @@ use std::collections::HashMap;
 pub struct KindTracker {
     pub i2k: HashMap<String, u16>,
     pub k2i: HashMap<u16, String>,
+    pub current_kind: Option<Kind>,
 }
 
 impl KindTracker {
@@ -25,6 +26,25 @@ impl KindTracker {
 
     pub fn resolve_kind(&self, k: Kind) -> &str {
         self.k2i.get(&k.0).expect("missing kind")
+    }
+
+    pub fn kind_from_comment(&mut self, comment: &Option<String>) -> Option<Kind> {
+        comment
+            .as_ref()
+            .map(|s| s.trim())
+            .map(|s| {
+                if s.starts_with("move to next layer ") {
+                    "move to next layer"
+                } else {
+                    s
+                }
+            })
+            .map(|s| self.get_kind(s))
+            .or(self.current_kind)
+    }
+
+    pub fn set_current(&mut self, kind: Option<Kind>) {
+        self.current_kind = kind;
     }
 }
 
