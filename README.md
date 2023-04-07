@@ -154,7 +154,7 @@ recommended. See their git repository for information on how to set up this tool
 
 In Simplify3D the relevant estimation command must be added under `Scripts` in
 the `Additional terminal commands for post processing` field. This field is just called
-`post processing` in V5.x, and the command shuld be appended with a [output_filepath].
+`Post Processing` in V5.x, and the command should be appended with a [output_filepath].
 
 ```
 /path/to/klipper_estimator --config_moonraker_url http://192.168.0.21 post-process [output_filepath]
