@@ -303,6 +303,7 @@ fn metadata_processor(preset: &SlicerPreset) -> Box<dyn GCodeInterceptor> {
     match preset {
         SlicerPreset::PrusaSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
         SlicerPreset::SuperSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
+        SlicerPreset::OrcaSlicer { .. } => Box::<PSSSGCodeInterceptor>::default(),
         SlicerPreset::IdeaMaker { .. } => Box::<IdeaMakerGCodeInterceptor>::default(),
         SlicerPreset::Cura { .. } => Box::<CuraGCodeInterceptor>::default(),
         SlicerPreset::Simplify3D { .. } => Box::<Simplify3DGCodeInterceptor>::default(),
