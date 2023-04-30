@@ -4,6 +4,7 @@ use regex::Regex;
 pub enum SlicerPreset {
     PrusaSlicer { version: String },
     SuperSlicer { version: String },
+    OrcaSlicer { version: String },
     IdeaMaker { version: String },
     Cura { version: Option<String> },
     Simplify3D { version: String },
@@ -14,6 +15,7 @@ impl std::fmt::Display for SlicerPreset {
         match self {
             SlicerPreset::PrusaSlicer { version } => write!(f, "PrusaSlicer {}", version),
             SlicerPreset::SuperSlicer { version } => write!(f, "SuperSlicer {}", version),
+            SlicerPreset::OrcaSlicer { version } => write!(f, "OrcaSlicer {}", version),
             SlicerPreset::IdeaMaker { version } => write!(f, "ideaMaker {}", version),
             SlicerPreset::Cura { version: None } => write!(f, "Cura"),
             SlicerPreset::Cura {
@@ -38,6 +40,7 @@ impl SlicerPreset {
         lazy_static! {
             static ref RE_PRUSA: Regex = Regex::new(r"PrusaSlicer\s(.*)\son").unwrap();
             static ref RE_SUPER: Regex = Regex::new(r"SuperSlicer\s(.*)\son").unwrap();
+            static ref RE_ORCA: Regex = Regex::new(r"OrcaSlicer\s(.*)\son").unwrap();
         }
         if let Some(m) = RE_PRUSA.captures(comment) {
             Some(SlicerPreset::PrusaSlicer {
@@ -45,6 +48,10 @@ impl SlicerPreset {
             })
         } else if let Some(m) = RE_SUPER.captures(comment) {
             Some(SlicerPreset::SuperSlicer {
+                version: m.get(1).unwrap().as_str().into(),
+            })
+        } else if let Some(m) = RE_ORCA.captures(comment) {
+            Some(SlicerPreset::OrcaSlicer {
                 version: m.get(1).unwrap().as_str().into(),
             })
         } else {

@@ -136,14 +136,15 @@ Currently the following slicers are supported:
 
   * PrusaSlicer
   * SuperSlicer
+  * OrcaSlicer
   * ideaMaker
   * Cura
   * Simplify3D
 
-In PrusaSlicer and SuperSlicer `Post-processing scripts` are set in `Output
+In PrusaSlicer, SuperSlicer, and OrcaSlicer `Post-processing scripts` are set in `Output
 Options` under `Print Settings`:
 
-![PrusaSlicer and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
+![PrusaSlicer, Orcaslicer, and SuperSlicer Post-processing scripts option](/doc/post_processing_psss.png)
 
 Note that ideaMaker does not have support for post-processing scripts, and thus
 cannot automatically run `klipper_estimator` on export.
@@ -197,7 +198,7 @@ line, will trigger this behaviour. Any whitespace between the `;` and `E`
 characters will however be ignored.
 
 The intended usage of this functionality is for print start macros, when
-executed by the slicer. E.g. in PrusaSlicer or SuperSlicer, one might set their
+executed by the slicer. E.g. in PrusaSlicer, SuperSlicer, or OrcaSlicer, one might set their
 print start gcode like this:
 
 ```
