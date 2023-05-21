@@ -3,6 +3,7 @@ use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, Prin
 
 use clap::Parser;
 use once_cell::sync::OnceCell;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
@@ -162,6 +163,13 @@ impl config::Source for MoonrakerSource {
                 } else {
                     return Ok(Default::default());
                 }
+            } else if let MoonrakerConfigError::RequestError(request_error) = e {
+                if request_error.is_status() && request_error.status() == Some(StatusCode::UNAUTHORIZED) {
+                    let msg = format!("Access denied (you may need to use --config_moonraker_api_key): {request_error}");
+                    return Err(config::ConfigError::Message(msg));
+                } else {
+                    return Err(config::ConfigError::Foreign(Box::new(request_error)));
+                }
             } else {
                 return Err(config::ConfigError::Foreign(Box::new(e)));
             }
@@ -267,6 +275,7 @@ fn moonraker_config(
 
     let cfg = req
         .send()?
+        .error_for_status()?
         .json::<MoonrakerResultRoot>()?
         .result
         .status
