@@ -148,30 +148,9 @@ impl config::Source for MoonrakerSource {
 
         let res = moonraker_config(&self.url, self.api_key.as_deref(), &mut limits);
         let cfg = if let Err(e) = res {
-            if self.ignore_error {
-                eprintln!("Could not get config from Moonraker, ignoring. Error was:\n{e}");
-
-                if let Some(cache_file) = self.cache_file.as_deref() {
-                    eprintln!("Using cached Moonraker config");
-                    match std::fs::read(cache_file) {
-                        Err(e) => {
-                            eprintln!("Could not read Moonraker cached config: {e}");
-                            return Ok(Default::default());
-                        }
-                        Ok(cfg) => std::str::from_utf8(&cfg).unwrap_or("").into(),
-                    }
-                } else {
-                    return Ok(Default::default());
-                }
-            } else if let MoonrakerConfigError::RequestError(request_error) = e {
-                if request_error.is_status() && request_error.status() == Some(StatusCode::UNAUTHORIZED) {
-                    let msg = format!("Access denied (you may need to use --config_moonraker_api_key): {request_error}");
-                    return Err(config::ConfigError::Message(msg));
-                } else {
-                    return Err(config::ConfigError::Foreign(Box::new(request_error)));
-                }
-            } else {
-                return Err(config::ConfigError::Foreign(Box::new(e)));
+            match self.remap_collection_error(e) {
+                Ok(cfg) => cfg,
+                Err(err) => return Err(err),
             }
         } else {
             let cfg = serde_json::to_string(&limits).unwrap();
@@ -184,6 +163,41 @@ impl config::Source for MoonrakerSource {
         };
         let file = config::File::from_str(&cfg, config::FileFormat::Json);
         file.collect()
+    }
+}
+
+impl MoonrakerSource {
+    fn remap_collection_error(
+        &self,
+        err: MoonrakerConfigError,
+    ) -> Result<String, config::ConfigError> {
+        if self.ignore_error {
+            eprintln!("Could not get config from Moonraker, ignoring. Error was:\n{err}");
+
+            if let Some(cache_file) = self.cache_file.as_deref() {
+                eprintln!("Using cached Moonraker config");
+                match std::fs::read(cache_file) {
+                    Err(e) => {
+                        eprintln!("Could not read Moonraker cached config: {e}");
+                        return Ok(Default::default());
+                    }
+                    Ok(cfg) => return Ok(std::str::from_utf8(&cfg).unwrap_or("").into()),
+                }
+            } else {
+                return Ok(Default::default());
+            }
+        }
+
+        match err {
+            MoonrakerConfigError::RequestError(request_error)
+                if request_error.is_status()
+                    && request_error.status() == Some(StatusCode::UNAUTHORIZED) =>
+            {
+                let msg = format!("Access denied (you may need to use --config_moonraker_api_key): {request_error}");
+                Err(config::ConfigError::Message(msg))
+            }
+            _ => Err(config::ConfigError::Foreign(Box::new(err))),
+        }
     }
 }
 
