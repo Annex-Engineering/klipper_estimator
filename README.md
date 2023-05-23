@@ -41,8 +41,9 @@ Basic usage info can be found by running `klipper_estimator` with no arguments.
 In order to provide accurate times, `klipper_estimator` needs printer settings
 including maximum velocity, acceleration, etc. It can take these either from a
 config file(`--config_file` option) or grab them directly from Moonraker(using
-the `--config_moonraker_url` option). Note that the Klipper configuration files
-cannot be used directly.
+the `--config_moonraker_url` option and, if authentication is required,
+`--config_moonraker_api_key`). Note that the Klipper configuration files cannot
+be used directly.
 
 To experiment with settings, one can use the `dump-config` command together with
 `--config_moonraker_url` to generate a config file based on the current printer
