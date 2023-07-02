@@ -5,11 +5,11 @@ use std::time::Duration;
 use crate::arcs::ArcState;
 pub use crate::firmware_retraction::FirmwareRetractionOptions;
 use crate::firmware_retraction::FirmwareRetractionState;
-use crate::gcode::{GCodeCommand, GCodeOperation};
+use crate::gcode::{GCodeCommand, GCodeExtendedParams, GCodeOperation};
 
 use crate::kind_tracker::{Kind, KindTracker};
 use glam::Vec4Swizzles;
-use glam::{DVec3 as Vec3, DVec4 as Vec4};
+use glam::{DVec2 as Vec2, DVec3 as Vec3, DVec4 as Vec4};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -149,6 +149,11 @@ impl Planner {
                     }
                     if let Some(v) = params.get_number::<f64>("square_corner_velocity") {
                         self.toolhead_state.limits.set_square_corner_velocity(v);
+                    }
+                }
+                "set_kinematics_limit" => {
+                    for c in self.toolhead_state.limits.move_checkers.iter_mut() {
+                        c.set_kinematics_limit(params);
                     }
                 }
                 "set_retraction" => {
@@ -840,7 +845,7 @@ impl ToolheadState {
         let mut pm = PlanningMove::new(self.position, new_pos, self);
 
         for c in self.limits.move_checkers.iter() {
-            c.check(&mut pm);
+            c.check(&mut pm, self);
         }
 
         self.position = new_pos;
@@ -893,6 +898,8 @@ pub enum MoveChecker {
         max_velocity: f64,
         max_accel: f64,
     },
+    ScaledCartesianLimiter(ScaledCartesianLimiter),
+    ScaledCoreXYLimiter(ScaledCoreXYLimiter),
     ExtruderLimiter {
         max_velocity: f64,
         max_accel: f64,
@@ -900,17 +907,27 @@ pub enum MoveChecker {
 }
 
 impl MoveChecker {
-    pub fn check(&self, move_cmd: &mut PlanningMove) {
+    pub fn check(&self, move_cmd: &mut PlanningMove, toolhead_state: &ToolheadState) {
         match self {
             Self::AxisLimiter {
                 axis,
                 max_velocity,
                 max_accel,
             } => Self::check_axis(move_cmd, *axis, *max_velocity, *max_accel),
+            Self::ScaledCartesianLimiter(limiter) => limiter.check(move_cmd, toolhead_state),
+            Self::ScaledCoreXYLimiter(limiter) => limiter.check(move_cmd, toolhead_state),
             Self::ExtruderLimiter {
                 max_velocity,
                 max_accel,
             } => Self::check_extruder(move_cmd, *max_velocity, *max_accel),
+        }
+    }
+
+    fn set_kinematics_limit(&mut self, params: &GCodeExtendedParams) {
+        match self {
+            Self::ScaledCartesianLimiter(limiter) => limiter.set_kinematics_limit(params),
+            Self::ScaledCoreXYLimiter(limiter) => limiter.set_kinematics_limit(params),
+            _ => {}
         }
     }
 
@@ -931,5 +948,110 @@ impl MoveChecker {
             let inv_extrude_r = 1.0 / e_rate.abs();
             move_cmd.limit_speed(max_velocity * inv_extrude_r, max_accel * inv_extrude_r);
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScaledCartesianLimiter {
+    pub max_velocity: Vec3,
+    pub max_accel: Vec3,
+    pub scale_per_axis: bool,
+    pub xy_hypot_accel: f64,
+}
+
+impl ScaledCartesianLimiter {
+    pub fn new(max_velocity: Vec3, max_accel: Vec3, scale_per_axis: bool) -> Self {
+        Self {
+            max_velocity,
+            max_accel,
+            scale_per_axis,
+            xy_hypot_accel: max_accel.x.hypot(max_accel.y),
+        }
+    }
+
+    pub fn check(&self, move_cmd: &mut PlanningMove, toolhead_state: &ToolheadState) {
+        if move_cmd.is_zero_distance() {
+            return;
+        }
+
+        let r = move_cmd.rate.xyz();
+        let x_r = r.x.abs().max(EPSILON);
+        let y_r = r.y.abs().max(EPSILON);
+        let max_v = (self.max_velocity.x / x_r).min(self.max_velocity.y / y_r);
+        let mut max_a = (self.max_accel.x / x_r).min(self.max_accel.y / y_r);
+        if self.scale_per_axis {
+            max_a *= toolhead_state.limits.max_acceleration / self.xy_hypot_accel
+        }
+        move_cmd.limit_speed(max_v, max_a)
+    }
+
+    pub fn set_kinematics_limit(&mut self, params: &GCodeExtendedParams) {
+        let max_velocity = self.max_velocity;
+        self.max_velocity = Vec3::new(
+            params.get_number("x_velocity").unwrap_or(max_velocity.x),
+            params.get_number("y_velocity").unwrap_or(max_velocity.y),
+            params.get_number("z_velocity").unwrap_or(max_velocity.z),
+        );
+        self.max_accel = Vec3::new(
+            params.get_number("x_accel").unwrap_or(self.max_accel.x),
+            params.get_number("y_accel").unwrap_or(self.max_accel.y),
+            params.get_number("z_accel").unwrap_or(self.max_accel.z),
+        );
+        self.scale_per_axis = params
+            .get_number::<isize>("scale")
+            .map_or(self.scale_per_axis, |v| v != 0);
+        self.xy_hypot_accel = self.max_accel.x.hypot(self.max_accel.y);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScaledCoreXYLimiter {
+    pub max_accel: Vec2,
+    pub scale_per_axis: bool,
+}
+
+impl ScaledCoreXYLimiter {
+    pub fn new(max_accel: Vec2, scale_per_axis: bool) -> Self {
+        Self {
+            max_accel,
+            scale_per_axis,
+        }
+    }
+
+    pub fn check(&self, move_cmd: &mut PlanningMove, toolhead_state: &ToolheadState) {
+        if move_cmd.is_zero_distance() {
+            return;
+        }
+
+        let axes_d = move_cmd.end - move_cmd.start;
+        let a = (axes_d.x + axes_d.y).abs();
+        let b = (axes_d.x - axes_d.y).abs();
+        let ab_linf = a.max(b);
+        if ab_linf > EPSILON {
+            let move_d = move_cmd.distance;
+            let max_v = toolhead_state.limits.max_velocity * move_d / ab_linf;
+            let x_o_a = axes_d.x / self.max_accel.x;
+            let y_o_a = axes_d.y / self.max_accel.y;
+            let a_o_a = (x_o_a + y_o_a).abs();
+            let b_o_a = (x_o_a - y_o_a).abs();
+            let ab_max = a_o_a.max(b_o_a);
+            let max_a = if self.scale_per_axis {
+                toolhead_state.limits.max_acceleration * move_d / ab_max
+                    * self.max_accel.x.max(self.max_accel.y)
+            } else {
+                move_d / ab_max
+            };
+            move_cmd.limit_speed(max_v, max_a);
+        }
+    }
+
+    pub fn set_kinematics_limit(&mut self, params: &GCodeExtendedParams) {
+        self.max_accel = Vec2::new(
+            params.get_number("x_accel").unwrap_or(self.max_accel.x),
+            params.get_number("y_accel").unwrap_or(self.max_accel.y),
+        );
+        self.scale_per_axis = params
+            .get_number::<isize>("scale")
+            .map_or(self.scale_per_axis, |v| v != 0);
     }
 }
