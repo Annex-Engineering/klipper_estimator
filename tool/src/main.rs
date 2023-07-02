@@ -1,5 +1,8 @@
-use lib_klipper::glam::DVec3;
-use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits};
+use lib_klipper::glam::{DVec2, DVec3};
+use lib_klipper::planner::{
+    FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits, ScaledCartesianLimiter,
+    ScaledCoreXYLimiter,
+};
 
 use clap::Parser;
 use once_cell::sync::OnceCell;
@@ -245,6 +248,7 @@ fn moonraker_config(
 
     #[derive(Debug, Deserialize)]
     struct PrinterConfig {
+        kinematics: String,
         max_velocity: f64,
         max_accel: f64,
         max_accel_to_decel: f64,
@@ -256,6 +260,8 @@ fn moonraker_config(
         max_y_accel: Option<f64>,
         max_z_velocity: Option<f64>,
         max_z_accel: Option<f64>,
+
+        scale_per_axis: Option<bool>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -312,31 +318,86 @@ fn moonraker_config(
         lift_z: fr.lift_z,
     });
 
-    let limits = [
-        (
-            DVec3::X,
-            cfg.printer.max_x_velocity,
-            cfg.printer.max_x_accel,
-        ),
-        (
-            DVec3::Y,
-            cfg.printer.max_y_velocity,
-            cfg.printer.max_y_accel,
-        ),
-        (
-            DVec3::Z,
-            cfg.printer.max_z_velocity,
-            cfg.printer.max_z_accel,
-        ),
-    ];
+    match cfg.printer.kinematics.as_str() {
+        "limited_cartesian" => {
+            let max_v = cfg.printer.max_velocity;
+            let max_vel = DVec3::new(
+                cfg.printer.max_x_velocity.unwrap_or(max_v),
+                cfg.printer.max_y_velocity.unwrap_or(max_v),
+                cfg.printer.max_z_velocity.unwrap_or(max_v),
+            );
+            let max_a = cfg.printer.max_accel;
+            let max_accel = DVec3::new(
+                cfg.printer.max_x_accel.unwrap_or(max_a),
+                cfg.printer.max_y_accel.unwrap_or(max_a),
+                cfg.printer.max_z_accel.unwrap_or(max_a),
+            );
+            let scale_per_axis = cfg.printer.scale_per_axis.unwrap_or(false);
 
-    for (axis, m, a) in limits {
-        if let (Some(max_velocity), Some(max_accel)) = (m, a) {
+            target
+                .move_checkers
+                .push(MoveChecker::ScaledCartesianLimiter(
+                    ScaledCartesianLimiter::new(max_vel, max_accel, scale_per_axis),
+                ));
             target.move_checkers.push(MoveChecker::AxisLimiter {
-                axis,
-                max_velocity,
-                max_accel,
+                axis: DVec3::Z,
+                max_velocity: max_vel.z,
+                max_accel: max_accel.z,
             });
+        }
+        "limited_corexy" => {
+            let max_a = cfg.printer.max_accel;
+            let max_xy_accel = DVec2::new(
+                cfg.printer.max_x_accel.unwrap_or(max_a),
+                cfg.printer.max_y_accel.unwrap_or(max_a),
+            );
+            let scale_per_axis = cfg.printer.scale_per_axis.unwrap_or(false);
+
+            target
+                .move_checkers
+                .push(MoveChecker::ScaledCoreXYLimiter(ScaledCoreXYLimiter::new(
+                    max_xy_accel,
+                    scale_per_axis,
+                )));
+            target.move_checkers.push(MoveChecker::AxisLimiter {
+                axis: DVec3::Z,
+                max_velocity: cfg.printer.max_z_accel.unwrap_or(max_a),
+                max_accel: cfg
+                    .printer
+                    .max_z_velocity
+                    .unwrap_or(cfg.printer.max_velocity),
+            });
+        }
+
+        // Default case, assume it's kinda like cartesian
+        _ => {
+            let limits = [
+                (
+                    DVec3::X,
+                    cfg.printer.max_x_velocity,
+                    cfg.printer.max_x_accel,
+                ),
+                (
+                    DVec3::Y,
+                    cfg.printer.max_y_velocity,
+                    cfg.printer.max_y_accel,
+                ),
+                (
+                    DVec3::Z,
+                    cfg.printer.max_z_velocity,
+                    cfg.printer.max_z_accel,
+                ),
+            ];
+
+            for (axis, m, a) in limits {
+                if let (Some(max_velocity), Some(max_accel)) = (m, a) {
+                    target.move_checkers.push(MoveChecker::AxisLimiter {
+                        axis,
+                        max_velocity,
+                        max_accel,
+                    });
+                }
+            }
         }
     }
 
