@@ -796,16 +796,11 @@ impl PrinterLimits {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 pub enum PositionMode {
+    #[default]
     Absolute,
     Relative,
-}
-
-impl Default for PositionMode {
-    fn default() -> Self {
-        PositionMode::Absolute
-    }
 }
 
 #[derive(Debug)]

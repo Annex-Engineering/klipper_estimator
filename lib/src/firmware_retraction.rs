@@ -18,19 +18,14 @@ pub struct FirmwareRetractionOptions {
     pub lift_z: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum FirmwareRetractionState {
+    #[default]
     Unretracted,
     Retracted {
         lifted_z: f64,
         unretract_length: f64,
     },
-}
-
-impl Default for FirmwareRetractionState {
-    fn default() -> Self {
-        FirmwareRetractionState::Unretracted
-    }
 }
 
 impl FirmwareRetractionState {
