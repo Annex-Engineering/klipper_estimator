@@ -50,6 +50,10 @@ pub struct EstimateCmd {
     input: String,
     #[clap(arg_enum, long, short, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
+    #[clap(long)]
+    omit_move_kinds: bool,
+    #[clap(long)]
+    omit_layer_times: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
@@ -295,7 +299,7 @@ impl EstimateCmd {
                     );
 
                     let mut kind_times = seq.kind_times.iter().collect::<Vec<_>>();
-                    if !kind_times.is_empty() {
+                    if !self.omit_move_kinds && !kind_times.is_empty() {
                         println!("  Move kind distribution:");
                         kind_times.sort_by_key(|(_, t)| {
                             NotNan::new(**t).unwrap_or_else(|_| NotNan::new(0.0).unwrap())
@@ -315,7 +319,7 @@ impl EstimateCmd {
                         .iter()
                         .map(|(l, t)| (format!("{l:.3}"), format_time(*t)))
                         .collect::<Vec<_>>();
-                    if !layer_times.is_empty() {
+                    if !self.omit_layer_times && !layer_times.is_empty() {
                         println!("  Layer time distribution:");
                         let longest_z = layer_times.iter().map(|(z, _)| z.len()).max().unwrap_or(0);
                         let longest_t = layer_times.iter().map(|(_, t)| t.len()).max().unwrap_or(0);
