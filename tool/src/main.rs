@@ -95,7 +95,7 @@ impl Opts {
             })?;
 
         let mut limits = builder.build()?.try_deserialize::<PrinterLimits>()?;
-        limits.update_junction_deviation();
+        limits.recalculate();
         Ok(limits)
     }
 
@@ -247,7 +247,8 @@ fn moonraker_config(
     struct PrinterConfig {
         max_velocity: f64,
         max_accel: f64,
-        max_accel_to_decel: f64,
+        max_accel_to_decel: Option<f64>,
+        minimum_cruise_ratio: Option<f64>,
         square_corner_velocity: f64,
 
         max_x_velocity: Option<f64>,
@@ -298,7 +299,11 @@ fn moonraker_config(
 
     target.set_max_velocity(cfg.printer.max_velocity);
     target.set_max_acceleration(cfg.printer.max_accel);
-    target.set_max_accel_to_decel(cfg.printer.max_accel_to_decel);
+    if let Some(v) = cfg.printer.minimum_cruise_ratio {
+        target.set_minimum_cruise_ratio(v);
+    } else if let Some(v) = cfg.printer.max_accel_to_decel {
+        target.set_max_accel_to_decel(v);
+    }
     target.set_square_corner_velocity(cfg.printer.square_corner_velocity);
     target.set_instant_corner_velocity(cfg.extruder.instantaneous_corner_velocity);
 
