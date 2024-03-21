@@ -1,7 +1,9 @@
+use anyhow::Context;
 use lib_klipper::glam::DVec3;
 use lib_klipper::planner::{FirmwareRetractionOptions, MoveChecker, Planner, PrinterLimits};
 
 use clap::Parser;
+use config::{Value, ValueKind};
 use once_cell::sync::OnceCell;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -54,20 +56,37 @@ impl Opts {
         }
     }
 
-    fn opt_parse(s: &str) -> anyhow::Result<(&str, &str)> {
+    fn opt_parse(s: &str) -> anyhow::Result<(&str, Value)> {
         let eqat = match s.find('=') {
             None => anyhow::bail!("invalid config override, format key=value"),
             Some(idx) => idx,
         };
         let key = &s[..eqat];
         let value = &s[eqat + 1..];
-        Ok((key, value))
+        let parser: fn(&str) -> anyhow::Result<ValueKind> = match key {
+            "max_accel_to_decel" => |v: &str| Ok(ValueKind::Float(v.parse()?)),
+            "minimum_cruise_ratio" => |v: &str| Ok(ValueKind::Float(v.parse()?)),
+            _ => |v: &str| Ok(ValueKind::String(v.to_string())),
+        };
+        Ok((
+            key,
+            Value::new(
+                None,
+                parser(value)
+                    .with_context(|| format!("failed to parse config override '{key}'"))?,
+            ),
+        ))
     }
 
     fn load_config(&self) -> anyhow::Result<PrinterLimits> {
         use config::Config;
 
-        let builder = Config::builder();
+        let builder = Config::builder()
+            .set_default(
+                "max_accel_to_decel",
+                Value::new(None, ValueKind::Float(50.0)),
+            )
+            .unwrap();
 
         let builder = if let Some(url) = &self.config_moonraker {
             builder.add_source(MoonrakerSource::new(
