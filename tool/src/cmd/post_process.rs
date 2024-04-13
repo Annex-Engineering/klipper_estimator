@@ -437,7 +437,7 @@ impl PostProcessCmd {
             }
         }
 
-        write!(
+        writeln!(
             wr,
             "; Processed by klipper_estimator {}, {}",
             env!("TOOL_VERSION"),
