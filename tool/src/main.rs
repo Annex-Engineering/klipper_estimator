@@ -81,12 +81,7 @@ impl Opts {
     fn load_config(&self) -> anyhow::Result<PrinterLimits> {
         use config::Config;
 
-        let builder = Config::builder()
-            .set_default(
-                "max_accel_to_decel",
-                Value::new(None, ValueKind::Float(50.0)),
-            )
-            .unwrap();
+        let builder = Config::builder();
 
         let builder = if let Some(url) = &self.config_moonraker {
             builder.add_source(MoonrakerSource::new(

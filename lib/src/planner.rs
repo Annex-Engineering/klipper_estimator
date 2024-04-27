@@ -734,8 +734,10 @@ impl MoveSequence {
 pub struct PrinterLimits {
     pub max_velocity: f64,
     pub max_acceleration: f64,
-    #[serde(flatten)]
-    pub max_accel_to_decel: AccelToDecel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_accel_to_decel: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_cruise_ratio: Option<f64>,
     pub square_corner_velocity: f64,
     #[serde(skip)]
     pub junction_deviation: f64,
@@ -749,29 +751,13 @@ pub struct PrinterLimits {
     pub move_checkers: Vec<MoveChecker>,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AccelToDecel {
-    #[serde(rename = "max_accel_to_decel")]
-    Static(f64),
-    #[serde(rename = "minimum_cruise_ratio")]
-    CruiseRatio(f64),
-}
-
-impl AccelToDecel {
-    pub fn to_absolute(&self, accel: f64) -> f64 {
-        match self {
-            Self::Static(v) => v.min(accel),
-            Self::CruiseRatio(v) => accel * (1.0 - v.clamp(0.0, 1.0)),
-        }
-    }
-}
-
 impl Default for PrinterLimits {
     fn default() -> Self {
         PrinterLimits {
             max_velocity: 100.0,
             max_acceleration: 100.0,
-            max_accel_to_decel: AccelToDecel::Static(50.0),
+            max_accel_to_decel: Some(50.0),
+            minimum_cruise_ratio: None,
             square_corner_velocity: 5.0,
             junction_deviation: Self::scv_to_jd(5.0, 100000.0),
             accel_to_decel: 50.0,
@@ -796,15 +782,18 @@ impl PrinterLimits {
     pub fn set_max_acceleration(&mut self, v: f64) {
         self.max_acceleration = v;
         self.update_junction_deviation();
+        self.update_accel_to_decel();
     }
 
     pub fn set_max_accel_to_decel(&mut self, v: f64) {
-        self.max_accel_to_decel = AccelToDecel::Static(v);
+        self.max_accel_to_decel = Some(v);
+        self.minimum_cruise_ratio = None;
         self.update_accel_to_decel();
     }
 
     pub fn set_minimum_cruise_ratio(&mut self, v: f64) {
-        self.max_accel_to_decel = AccelToDecel::CruiseRatio(v.clamp(0.0, 1.0));
+        self.max_accel_to_decel = None;
+        self.minimum_cruise_ratio = Some(v.clamp(0.0, 1.0));
         self.update_accel_to_decel();
     }
 
@@ -828,7 +817,11 @@ impl PrinterLimits {
     }
 
     fn update_accel_to_decel(&mut self) {
-        self.accel_to_decel = self.max_accel_to_decel.to_absolute(self.max_acceleration);
+        self.accel_to_decel = match (self.minimum_cruise_ratio, self.max_accel_to_decel) {
+            (Some(v), _) => self.max_acceleration * (1.0 - v.clamp(0.0, 1.0)),
+            (_, Some(v)) => v.min(self.max_acceleration),
+            _ => 50.0f64.min(self.max_acceleration),
+        }
     }
 }
 
